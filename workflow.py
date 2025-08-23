@@ -1,23 +1,144 @@
 import luigi;
+import time;
+import subprocess;
+import argparse;
+import socket;
+import time;
+import subprocess;
+from urllib.parse import urlparse;
 
-INPUT_DIR = "";
-TEMP_DIR = "";
-OUTPUT_DIR = "";
-PREPROCESS_DIR = "oc_meta/oc_meta/run/meta/preprocess_input.py";
-OC_VALIDATOR_DIR = "oc_validator/oc_validator/main.py";
-OC_META_DIR = "oc_meta/oc_meta/run/meta_process.py";
-OC_META_VAL_DIR = "oc_meta/oc_meta/run/meta/check_results.py";
-OC_META_CSV = "oc_meta/oc_meta/run/csv_generator_lite.py";
+INPUT_DIR = "dir/input";
+TEMP_DIR = "dir/temp";
+OUTPUT_DIR = "dir/output";
+PREPROCESS_DIR = "../oc_meta/oc_meta/run/meta/preprocess_input.py";
+OC_VALIDATOR_DIR = "./oc_validator/oc_validator/main.py";
+OC_META_DIR = "./oc_meta/oc_meta/run/meta_process.py";
+OC_META_VAL_DIR = "./oc_meta/oc_meta/run/meta/check_results.py";
+OC_META_CSV = "./oc_meta/oc_meta/run/csv_generator_lite.py";
 META2REDIS_DIR = "index/scripts/ocworkflow.py/populate_redis()";
 OC_INDEX_DIR = "index/scripts/ocworkflow.py/gen_zipbatch()";
 UPLOAD_DIR = "";
 PUBLICATION_DIR = "";
 
+FUSEKI_IMAGE = "stain/jena-fuseki"
+REDIS_IMAGE = "redis:7-alpine"
+REDIS_CONTAINER = "my-redis"
+FUSEKI_CONTAINER = "my-fuseki"
+
 #preprocess_input default values
-PREPROCESS_REDIS_HOST = "localhost";
-PREPROCESS_REDIS_PORT = 6379;
-PREPROCESS_REDIS_DB_NUMBER = 10;
-PREPROCESS_SPARQL_ENDPOINT = "";
+PREPROCESS_STORAGE_TYPE = "sparql" # can be "redis" or "sparql"
+PREPROCESS_REDIS_DB_NUMBER = "10";
+PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
+
+
+# helpers
+
+def wait_for_port(host: str, port: int, timeout: int = 60):
+    deadline = time.time() + timeout;
+    last_error = None;
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=2):
+                return;
+        except OSError as e:
+            last_error = e;
+            time.sleep(0.5);
+    raise TimeoutError(f"Port {host}:{port} not ready after {timeout}s; last error: {last_error}");
+
+def run(cmd: list[str], **kwargs):
+    print("$", " ".join(cmd));
+    return subprocess.run(cmd, check=True, **kwargs);
+
+def docker_rm(container: str):
+    try:
+        run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+    except subprocess.CalledProcessError:
+        pass;  # already gone
+
+# redis
+
+def start_redis(container=REDIS_CONTAINER, port=6379):
+    docker_rm(container);
+    run(["docker", "run", "-d", "--name", container, "-p", f"{port}:6379", REDIS_IMAGE]);
+    wait_for_port("localhost", port);
+    print(f"Redis ready at redis://localhost:{port}");
+
+# fuseki
+
+def parse_fuseki_from_endpoint(endpoint: str):
+    """
+    Extract host, dataset, port from a SPARQL endpoint.
+    Example: http://localhost:3030/ds/sparql -> host = localhost, dataset = ds, port = 3030
+    """
+    u = urlparse(endpoint);
+    host = u.hostname or "localhost";
+    port = u.port or (443 if u.scheme == "https" else 80);
+
+    # path parts without empties
+    parts = [p for p in (u.path or "").split("/") if p];
+    if not parts:
+        raise ValueError(f"Cannot determine dataset from endpoint path: {endpoint}");
+    # common patterns end with 'sparql' or 'query'
+    if parts[-1].lower() in ("sparql", "query"):
+        if len(parts) < 2:
+            raise ValueError(f"Endpoint path too short to infer dataset: {endpoint}");
+        dataset = parts[-2];
+    else:
+        dataset = parts[-1];
+
+    return host, dataset, port;
+
+def start_fuseki_for_endpoint(endpoint: str, container=FUSEKI_CONTAINER):
+    """
+    Start an in-memory Fuseki so that the query endpoint will be at exactly the
+    dataset+port implied by `endpoint`. (We publish the container's 3030 to the
+    host port parsed from the URL, and create an in-memory dataset with that name.)
+    """
+    host, dataset, port = parse_fuseki_from_endpoint(endpoint)
+
+    if host not in ("localhost", "127.0.0.1"): 
+        print(f"Endpoint host is '{host}'. This script exposes Fuseki on the local machine; \n please access it via http://localhost:{port}/{dataset}/sparql");
+
+    docker_rm(container);
+    run(["docker", "run", "-d", "--name", container, "-p", f"{port}:3030", FUSEKI_IMAGE, "--mem", f"/{dataset}"]);
+    wait_for_port("localhost", port);
+    print(f"Fuseki ready at http://localhost:{port}/{dataset}/sparql (requested: {endpoint})");
+
+# preprocess calls
+
+def run_preprocess_redis(redis_db: int):
+    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "redis", "--redis-db", redis_db];
+    run(cmd);
+    print("Input for meta preprocessed");
+    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "redis", "--redis-db", redis_db];
+    run(cmd);
+    print("Input for index preprocessed.");
+
+def run_preprocess_sparql(sparql_endpoint: str):
+    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint ];
+    run(cmd);
+    print("Input for meta preprocessed");
+    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint];
+    run(cmd);
+    print("Input for index preprocessed.");
+
+# preprocess pipelines
+
+def preprocess_pipeline_with_redis(redis_db: int):
+    try:
+        start_redis();
+        run_preprocess_redis(redis_db);
+    finally:
+        docker_rm(REDIS_CONTAINER);
+
+def preprocess_pipeline_with_sparql(sparql_endpoint: str):
+    try:
+        start_fuseki_for_endpoint(sparql_endpoint);
+        run_preprocess_sparql(sparql_endpoint);
+    finally:
+        docker_rm(FUSEKI_CONTAINER);
+
+# luigi tasks
 
 class Preprocess(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -25,14 +146,14 @@ class Preprocess(luigi.Task):
     def run(self):
 
         print("Running task Preprocess");
-        #TODO input files
-        print("Step 1 - placeholder");
+        print("Placeholder - call preprocess with all files in INPUT_DIR and store output in TEMP_DIR");
 
-        #TODO call existing data from ORACLE (REDIS)?
-        print("Step 2 - placeholder");
-
-        #TODO calling preprocess on input files and hold two output files
-        print("Step 3 - placeholder");
+        if(PREPROCESS_STORAGE_TYPE == "sparql"):
+            preprocess_pipeline_with_sparql(PREPROCESS_SPARQL_ENDPOINT);
+        elif(PREPROCESS_STORAGE_TYPE == "redis"):
+            preprocess_pipeline_with_redis(PREPROCESS_REDIS_DB_NUMBER);
+        else:
+            print("Incorrect value for PREPROCESS_STORAGE_TYPE");
 
         print("Finished task Preprocess");
 
@@ -49,7 +170,7 @@ class Validator(luigi.Task):
         print("Running task Validator");
         
         #TODO put them in oc_validator and return validated versions
-        print("Step 4 - placeholder");
+        print("Placeholder - call oc_validater to run on preprocessed files");
         
         print("Finished task Validator");
 
@@ -65,8 +186,8 @@ class DatabaseSwitchOn(luigi.Task):
     def run(self):
         print("Running task DatabaseSwitchOn");
         
-        #TODO turn on META (Virtuoso?), PROV (Virtuoso?) and INDEX (QLEVER in Docker) dbs ig
-        print("Step 5 - placeholder");
+        #TODO turn on META (Blazegraph?), PROV (Virtuoso apparently?) and INDEX (QLEVER in Docker) dbs ig
+        print("Placeholder - turn on META, PROV and INDEX");
         
         print("Finished task DatabaseSwitchOn");
 
@@ -83,7 +204,7 @@ class OCMeta(luigi.Task):
         print("Running task OCMeta");
         
         #TODO call oc_meta to update META and PROV with validated meta data
-        print("Step 6 - placeholder");
+        print("Placeholder - call oc_meta to update META and PROV with validated meta data");
         
         print("Finished task OCMeta");
 
@@ -100,7 +221,7 @@ class OCMetaVal(luigi.Task):
         print("Running task OCMetaVal");
         
         #TODO validate new data in META nad PROV with oc_meta_val
-        print("Step 7 - placeholder");
+        print("Placeholder - call oc_meta_val to validate new data in META and PROV");
         
         print("Finished task OCMetaVal");
 
@@ -117,7 +238,7 @@ class OCMetaCsv(luigi.Task):
         print("Running task OCMetaCsv");
         
         #TODO if good then call oc_meta_csv to construct meta.csv with data from META
-        print("Step 8 - placeholder");
+        print("placeholder - call oc_meta_csv to construct meta.csv with data from META");
         
         print("Finished task OCMetaCsv");
 
@@ -134,10 +255,10 @@ class Meta2Redis(luigi.Task):
         print("Running task Meta2Redis");
         
         #TODO turn on in-RAM REDIS?
-        print("Step 9 - placeholder");
+        print("Placeholder - turn on in-RAM REDIS");
 
         #TODO call meta2redis to upload the data from constructed meta.csv to in-RAM REDIS
-        print("Step 10 - placeholder");
+        print("Placeholder - call meta2redis to upload the data from constructed meta.csv to in-RAM REDIS");
         
         print("Finished task Meta2Redis");
 
@@ -154,7 +275,7 @@ class OCIndex(luigi.Task):
         print("Running task OCIndex");
         
         #TODO call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data
-        print("Step 11 - placeholder");
+        print("Placeholder - call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data");
         
         print("Finished task OCIndex");
 
@@ -171,7 +292,7 @@ class Upload(luigi.Task):
         print("Running task Upload");
         
         #TODO call upload to use raw data to update INDEX and PROV(?)
-        print("Step 12 - placeholder");
+        print("Placeholder - call upload to use raw data to update INDEX and PROV?");
         
         print("Finished task Upload");
 
@@ -188,7 +309,7 @@ class Publication(luigi.Task):
         print("Running task Publication");
         
         #TODO? ?maybe? ?call? ?publication? ?with? ?raw? ?data?
-        print("Step 13 - placeholder");
+        print("Placeholder? - calling publication with raw data?");
         
         print("Finished task Publication");
 
@@ -208,6 +329,8 @@ if __name__ == "__main__":
     task_upload = Upload();
     task_publication = Publication();
 
+    start = time.time();
+    print("");
     task_preprocess.run();
     task_validator.run();
     task_dbswitchon.run();
@@ -218,3 +341,5 @@ if __name__ == "__main__":
     task_ocindex.run();
     task_upload.run();
     task_publication.run();
+    end = time.time();
+    print("Total runtime: " + str(end-start) + "s");
