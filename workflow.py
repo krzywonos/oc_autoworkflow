@@ -14,6 +14,7 @@ TEMP_DIR = "dir/temp";
 OUTPUT_DIR = "dir/output";
 PREPROCESS_DIR = "../oc_meta/oc_meta/run/meta/preprocess_input.py";
 OC_VALIDATOR_DIR = "./oc_validator/oc_validator/main.py";
+OC_VIRTUOSO_UTILITIES_DIR = "./virtuoso_utilities/virtuoso_utilities";
 OC_META_DIR = "./oc_meta/oc_meta/run/meta_process.py";
 OC_META_VAL_DIR = "./oc_meta/oc_meta/run/meta/check_results.py";
 OC_META_CSV = "./oc_meta/oc_meta/run/csv_generator_lite.py";
@@ -27,14 +28,34 @@ REDIS_IMAGE = "redis:7-alpine"
 REDIS_CONTAINER = "my-redis"
 FUSEKI_CONTAINER = "my-fuseki"
 
-#preprocess_input default values
+# preprocess_input default values
 PREPROCESS_STORAGE_TYPE = "sparql" # can be "redis" or "sparql"
 PREPROCESS_REDIS_DB_NUMBER = "10";
 PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
 
-#validation values
-VALIDATION_TYPE = "2" # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
+# validation values
+VALIDATION_TYPE = "2"; # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
 
+# values for SPARQL database for META
+
+# values for QLEVER database in Docker for INDEX
+
+# values for Virtuoso in Docker for PROV
+PROV_VIRTUOSO_BULK_LOAD = 1; # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
+PROV_VIRTUOSO_BULK_LOAD_DIR = ""; # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO
+PROV_VIRTUOSO_CUSTOM = 1; # default: 1. set to 0 to disable customised usage. 
+PROV_VIRTUOSO_NAME = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_HTTP_PORT = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_ISQL_PORT = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_DATA_DIR = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_DBA_USERNAME = "dba"; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_DBA_PASSWORD = "dba"; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_MOUNT_VOLUME = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_NETWORK = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_MEMORY = "16g"; # defaults to 2/3 of host memory with psutil installed, otherwise 2g. 
+PROV_VIRTUOSO_DETACH = 1; # default: 1. Run container in detached mode.
+PROV_VIRTUOSO_WAIT_READY = 1; # default: 1. Wait until Virtuoso is ready to accept connections.
+PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS = 1; # default: 1. Makes database publicly writable.
 
 # helpers
 
@@ -120,7 +141,7 @@ def run_preprocess_redis(redis_db: int):
     print("Input for index preprocessed.");
 
 def run_preprocess_sparql(sparql_endpoint: str):
-    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint ];
+    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint];
     run(cmd);
     print("Input for meta preprocessed");
     cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint];
@@ -192,6 +213,7 @@ class Validation(luigi.Task):
                 print("Validated META file no. " + str(counter));
 
         # oc_validator for index CSVs
+        # oc_validator currently rejects preprocessed index CSVs
         folder = Path("dir/temp/index-preprocessed");
         counter = 0;
         for file in folder.iterdir():
@@ -226,8 +248,49 @@ class DatabaseSwitchOn(luigi.Task):
         #TODO turn on META (Blazegraph?), PROV (Virtuoso apparently?) and INDEX (QLEVER in Docker) dbs ig
         print("Placeholder - turn on META, PROV and INDEX");
         
+        # triplestore for META
 
-        
+
+        # QLEVER in Docker for INDEX
+
+
+        # Virtuoso in Docker for PROV
+        cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/launch_virtuoso.py"];
+        if PROV_VIRTUOSO_CUSTOM == 1:
+            if PROV_VIRTUOSO_NAME != "":
+                cmd.append("--name");
+                cmd.append(PROV_VIRTUOSO_NAME);
+            if PROV_VIRTUOSO_HTTP_PORT != "":
+                cmd.append("--http-port");
+                cmd.append(PROV_VIRTUOSO_HTTP_PORT);
+            if PROV_VIRTUOSO_ISQL_PORT != "":
+                cmd.append("--isql-port");
+                cmd.append(PROV_VIRTUOSO_ISQL_PORT);
+            if PROV_VIRTUOSO_DATA_DIR != "":
+                cmd.append("--data-dir");
+                cmd.append(PROV_VIRTUOSO_DATA_DIR);
+            if PROV_VIRTUOSO_DBA_PASSWORD != "":
+                cmd.append("--dba-password");
+                cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
+            if PROV_VIRTUOSO_MOUNT_VOLUME != "":
+                cmd.append("--mount-volume");
+                cmd.append(PROV_VIRTUOSO_MOUNT_VOLUME);
+            if PROV_VIRTUOSO_NETWORK != "":
+                cmd.append("--network");
+                cmd.append(PROV_VIRTUOSO_NETWORK);
+            if PROV_VIRTUOSO_MEMORY != "":
+                cmd.append("--memory");
+                cmd.append(PROV_VIRTUOSO_MEMORY);
+            if PROV_VIRTUOSO_DETACH == 1:
+                cmd.append("--detach");
+            if PROV_VIRTUOSO_WAIT_READY == 1:
+                cmd.append("--wait-ready");
+            if PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS == 1:
+                cmd.append("--enable-write-permissions");
+        run(cmd);
+
+        # virtuoso_utilities/bulk_load.py n-quads to populate PROV if enabled
+
         print("Finished task DatabaseSwitchOn");
 
     def output(self):
@@ -333,6 +396,8 @@ class Upload(luigi.Task):
         #TODO call upload to use raw data to update INDEX and PROV(?)
         print("Placeholder - call upload to use raw data to update INDEX and PROV?");
         
+        #TODO: virtuoso_utilities/dump_quadstore.py to get PROV dump
+
         print("Finished task Upload");
 
     def output(self):
@@ -358,7 +423,7 @@ class Publication(luigi.Task):
 if __name__ == "__main__":
 
     task_preprocess = Preprocess();
-    task_validator = Validation();
+    #task_validation = Validation();
     task_dbswitchon = DatabaseSwitchOn();
     task_ocmeta = OCMeta();
     task_ocmetaval = OCMetaVal();
@@ -371,7 +436,7 @@ if __name__ == "__main__":
     start = time.time();
     print("");
     task_preprocess.run();
-    task_validator.run();
+    #task_validation.run();
     task_dbswitchon.run();
     task_ocmeta.run();
     task_ocmetaval.run();
