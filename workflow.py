@@ -5,7 +5,9 @@ import argparse;
 import socket;
 import time;
 import subprocess;
+from pathlib import Path;
 from urllib.parse import urlparse;
+from oc_validator.main import Validator;
 
 INPUT_DIR = "dir/input";
 TEMP_DIR = "dir/temp";
@@ -29,6 +31,9 @@ FUSEKI_CONTAINER = "my-fuseki"
 PREPROCESS_STORAGE_TYPE = "sparql" # can be "redis" or "sparql"
 PREPROCESS_REDIS_DB_NUMBER = "10";
 PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
+
+#validation values
+VALIDATION_TYPE = "2" # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
 
 
 # helpers
@@ -160,19 +165,51 @@ class Preprocess(luigi.Task):
     def output(self):
         return luigi.LocalTarget("dupa-%s.txt" % self.param)
     
-class Validator(luigi.Task):
+class Validation(luigi.Task):
     param = luigi.Parameter(default = 42);
 
     def requires(self):
         return Preprocess(self.param);
 
     def run(self):
-        print("Running task Validator");
-        
-        #TODO put them in oc_validator and return validated versions
-        print("Placeholder - call oc_validater to run on preprocessed files");
-        
-        print("Finished task Validator");
+        print("Running task Validation");
+
+        # oc_validator for meta CSVs
+        folder = Path("dir/temp/meta-preprocessed");
+        counter = 0;
+        for file in folder.iterdir():
+            if file.is_file():
+                if VALIDATION_TYPE == "0":
+                    v = Validator(str(file), TEMP_DIR + "/meta-validated");
+                    v.validate();
+                if VALIDATION_TYPE == "1":
+                    v = Validator(str(file), TEMP_DIR + "/meta-validated", use_meta_endpoint = True);
+                    v.validate();
+                if VALIDATION_TYPE == "2":
+                    v = Validator(str(file), TEMP_DIR + "/meta-validated", verify_id_existence = False);
+                    v.validate();
+                counter += 1;
+                print("Validated META file no. " + str(counter));
+
+        # oc_validator for index CSVs
+        folder = Path("dir/temp/index-preprocessed");
+        counter = 0;
+        for file in folder.iterdir():
+            if file.is_file():
+                if VALIDATION_TYPE == "0":
+                    v = Validator(str(file), TEMP_DIR + "/index-validated");
+                    v.validate();
+                if VALIDATION_TYPE == "1":
+                    v = Validator(str(file), TEMP_DIR + "/index-validated", use_meta_endpoint = True);
+                    v.validate();
+                if VALIDATION_TYPE == "2":
+                    v = Validator(str(file), TEMP_DIR + "/index-validated", verify_id_existence = False);
+                    v.validate();
+                counter += 1;
+                print("Validated META file no. " + str(counter));
+        #TODO?: eliminate incorrectly validated lines?
+
+        print("Finished task Validation");
 
     def output(self):
         return luigi.LocalTarget("dupa-%s.txt" % self.param)
@@ -181,13 +218,15 @@ class DatabaseSwitchOn(luigi.Task):
     param = luigi.Parameter(default = 42);
 
     def requires(self):
-        return Validator(self.param);
+        return Preprocess(self.param);
 
     def run(self):
         print("Running task DatabaseSwitchOn");
         
         #TODO turn on META (Blazegraph?), PROV (Virtuoso apparently?) and INDEX (QLEVER in Docker) dbs ig
         print("Placeholder - turn on META, PROV and INDEX");
+        
+
         
         print("Finished task DatabaseSwitchOn");
 
@@ -319,7 +358,7 @@ class Publication(luigi.Task):
 if __name__ == "__main__":
 
     task_preprocess = Preprocess();
-    task_validator = Validator();
+    task_validator = Validation();
     task_dbswitchon = DatabaseSwitchOn();
     task_ocmeta = OCMeta();
     task_ocmetaval = OCMetaVal();
