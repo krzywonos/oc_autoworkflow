@@ -7,6 +7,7 @@ Luigi
 oc_ocdm
 oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)
 oc_validator
+virtuoso_utilities dependencies (isort)
 
 oc_meta code stored locally
 virtuoso_utilities stored locally

@@ -5,9 +5,11 @@ import argparse;
 import socket;
 import time;
 import subprocess;
+import yaml;
 from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
+
 
 INPUT_DIR = "dir/input";
 TEMP_DIR = "dir/temp";
@@ -37,16 +39,44 @@ PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
 VALIDATION_TYPE = "2"; # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
 
 # values for SPARQL database for META
+META_TRIPLESTORE_URL = "http://127.0.0.1:8805/sparql"; # Endpoint URL to load the output RDF
+META_PROVENANCE_TRIPLESTORE_URL = "http://127.0.0.1:8806/sparql"; #TODO this should always be virtuoso no?
+META_BASE_IRI = "https://w3id.org/oc/meta/"; # The base URI of entities on Meta. This setting can be safely left as is
+META_CONTEXT_PATH = "https://w3id.org/oc/corpus/context.json"; # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
+META_RESP_AGENT = "https://w3id.org/oc/meta/prov/pa/1"; # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
+META_SOURCE = "https://api.crossref.org/"; # Data source URL. This setting can be safely left as is
+META_OUTPUT_DIR = OUTPUT_DIR + "/meta";
+META_REDIS_HOST = "localhost"; #
+META_REDIS_PORT = 6379; #
+META_REDIS_DB = 0; #
+META_REDIS_CACHE_DB = 1; #
+META_SUPPLIER_PREFIX = "060"; # A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
+META_RDF_OUTPUT_IN_CHUNKS = 0; # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
+META_WORKERS_NUMBER = 16; # Number of cores to devote to the Meta process
+META_DIR_SPLIT_NUMBER = 10000; # Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
+META_ITEMS_PER_FILE = 1000; # Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
+META_DEFAULT_DIR = "_"; # This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
+META_GENERATE_RDF_FILES = 0; # If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
+META_ZIP_OUTPUT_RDF = 1; # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
+META_OUTPUT_RDF_DIR = META_OUTPUT_DIR + "/rdf"; # Folder where RDF files are saved. Since these files are the heaviest, it is sometimes convenient to save them on HDD, while the triplestore needs to be on SSD for its efficient operation
+META_SILENCER = '["author", "editor", "publisher"]'; # Fields in the silencer list are only updated if there is no information on that field in OpenCitations Meta. For example, if 'author' is specified, any new authors are not added to the list if authors are already present.
+META_NORMALIZE_TITLES = 1; #
+META_USE_DOI_API_SERVICE = 0; # If True, use the DOI API service to check if DOIs are valid
 
 # values for QLEVER database in Docker for INDEX
 
+
 # values for Virtuoso in Docker for PROV
 PROV_VIRTUOSO_BULK_LOAD = 1; # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
-PROV_VIRTUOSO_BULK_LOAD_DIR = ""; # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO
+PROV_VIRTUOSO_BULK_LOAD_DIR = "dir/input/virtuoso"; # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO
+PROV_VIRTUOSO_DUMP = 1; #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
+PROV_VIRTUOSO_DUMP_DIR = "dir/output/n-quads-dump"; # directory for n-quad dump containing PROV from Virtuoso 
+PROV_VIRTUOSO_DUMP_FILE_LIMIT = 100000000; #maximum length of dump files in bytes
+PROV_VIRTUOSO_DUMP_COMPRESSION = 1; # default: 1. set to 0 to disable gzip compression
 PROV_VIRTUOSO_CUSTOM = 1; # default: 1. set to 0 to disable customised usage. 
-PROV_VIRTUOSO_NAME = ""; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_HTTP_PORT = ""; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_ISQL_PORT = ""; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_NAME = "virtuoso"; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_HTTP_PORT = "8888"; # please consult virtuoso_utilities' README.md for usage and default values
+PROV_VIRTUOSO_ISQL_PORT = "1111"; # please consult virtuoso_utilities' README.md for usage and default values
 PROV_VIRTUOSO_DATA_DIR = ""; # please consult virtuoso_utilities' README.md for usage and default values
 PROV_VIRTUOSO_DBA_USERNAME = "dba"; # please consult virtuoso_utilities' README.md for usage and default values
 PROV_VIRTUOSO_DBA_PASSWORD = "dba"; # please consult virtuoso_utilities' README.md for usage and default values
@@ -80,6 +110,21 @@ def docker_rm(container: str):
         run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
     except subprocess.CalledProcessError:
         pass;  # already gone
+
+def virtuoso_rebuild_index():
+    cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/rebuild_fulltext_index.py"];
+    if PROV_VIRTUOSO_DBA_PASSWORD != "":
+        cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
+    else:
+        cmd.append("dba");
+    if PROV_VIRTUOSO_CUSTOM == 1:
+        cmd.append("--port");
+        cmd.append(PROV_VIRTUOSO_ISQL_PORT);
+        cmd.append("--user");
+        cmd.append(PROV_VIRTUOSO_DBA_USERNAME);
+    cmd.append("--docker-container");
+    cmd.append(PROV_VIRTUOSO_NAME);
+    run(cmd);
 
 # redis
 
@@ -248,10 +293,10 @@ class DatabaseSwitchOn(luigi.Task):
         #TODO turn on META (Blazegraph?), PROV (Virtuoso apparently?) and INDEX (QLEVER in Docker) dbs ig
         print("Placeholder - turn on META, PROV and INDEX");
         
-        # triplestore for META
+        # triplestore for META (ask Arcangelo which one)
 
 
-        # QLEVER in Docker for INDEX
+        # QLEVER in Docker for INDEX???
 
 
         # Virtuoso in Docker for PROV
@@ -287,10 +332,33 @@ class DatabaseSwitchOn(luigi.Task):
                 cmd.append("--wait-ready");
             if PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS == 1:
                 cmd.append("--enable-write-permissions");
+        cmd.append("--mount-volume");
+        cmd.append(PROV_VIRTUOSO_DUMP_DIR);
         run(cmd);
 
         # virtuoso_utilities/bulk_load.py n-quads to populate PROV if enabled
-
+        if PROV_VIRTUOSO_BULK_LOAD:
+            cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/bulk_load.py"];
+            cmd.append("--data-directory");
+            cmd.append(PROV_VIRTUOSO_BULK_LOAD_DIR);
+            cmd.append("--password");
+            if PROV_VIRTUOSO_DBA_PASSWORD != "":
+                cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
+            else:
+                cmd.append("dba");
+            if PROV_VIRTUOSO_CUSTOM == 1:
+                if PROV_VIRTUOSO_NAME != "":
+                    cmd.append("--docker-container");
+                    cmd.append(PROV_VIRTUOSO_NAME);
+                if PROV_VIRTUOSO_ISQL_PORT != "":
+                    cmd.append("--port");
+                    cmd.append(PROV_VIRTUOSO_ISQL_PORT);
+                if PROV_VIRTUOSO_DBA_USERNAME != "":
+                    cmd.append("--user");
+                    cmd.append(PROV_VIRTUOSO_DBA_USERNAME);
+            cmd.append("--recursive");
+            run(cmd);
+        
         print("Finished task DatabaseSwitchOn");
 
     def output(self):
@@ -305,9 +373,54 @@ class OCMeta(luigi.Task):
     def run(self):
         print("Running task OCMeta");
         
+        #TODO create config in yaml based on the meta configuration values
+        config = {}
+        config["triplestore_url"] = META_TRIPLESTORE_URL;
+        config["provenance_triplestore_url"] = META_PROVENANCE_TRIPLESTORE_URL;
+        config["provenance_endpoints"] = "[]";
+        config["input_csv_dir"] = TEMP_DIR + "/meta-preprocessed";
+        config["base_output_dir"] = META_OUTPUT_DIR;
+
+        config["output_rdf_dir"] = META_OUTPUT_RDF_DIR;
+        config["base_iri"] = META_BASE_IRI;
+        config["context_path"] = META_CONTEXT_PATH;
+        config["dir_split_number"] = META_DIR_SPLIT_NUMBER;
+        config["items_per_file"] = META_ITEMS_PER_FILE;
+        config["default_dir"] = META_DEFAULT_DIR;
+        config["supplier_prefix"] = "'" + META_SUPPLIER_PREFIX + "'";
+        if META_RDF_OUTPUT_IN_CHUNKS:
+            config["rdf_output_in_chunks"] = "True";
+        else:
+            config["rdf_output_in_chunks"] = "False";
+        if META_ZIP_OUTPUT_RDF:
+            config["zip_output_rdf"] = "True";
+        else:  
+            config["zip_output_rdf"] = "False";
+        config["source"] = META_SOURCE;
+        if META_USE_DOI_API_SERVICE:
+            config["use_doi_api_service"] = "True";
+        else:
+            config["use_doi_api_service"] = "False";
+        config["workers_number"] = META_WORKERS_NUMBER;
+        config["silencer"] = META_SILENCER;
+        if META_GENERATE_RDF_FILES:
+            config["generate_rdf_files"] = "True";
+        else:
+            config["generate_rdf_files"] = "False";
+        config["virtuoso_full_text_search"] = "True";
+        
+        
+
+
+        path = Path("dir/temp/meta_config.yaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
+
         #TODO call oc_meta to update META and PROV with validated meta data
         print("Placeholder - call oc_meta to update META and PROV with validated meta data");
         
+
         print("Finished task OCMeta");
 
     def output(self):
@@ -397,6 +510,25 @@ class Upload(luigi.Task):
         print("Placeholder - call upload to use raw data to update INDEX and PROV?");
         
         #TODO: virtuoso_utilities/dump_quadstore.py to get PROV dump
+        if PROV_VIRTUOSO_DUMP:
+            cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/dump_quadstore.py"];
+            cmd.append("--password")
+            if PROV_VIRTUOSO_DBA_PASSWORD != "":
+                cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
+            else:
+                cmd.append("dba");
+            if PROV_VIRTUOSO_CUSTOM == 1:
+                cmd.append("--port");
+                cmd.append(PROV_VIRTUOSO_ISQL_PORT);
+                cmd.append("--user");
+                cmd.append(PROV_VIRTUOSO_DBA_USERNAME);
+            cmd.append("--docker-container");
+            cmd.append(PROV_VIRTUOSO_NAME);
+            cmd.append("--file-length-limit");
+            cmd.append(PROV_VIRTUOSO_DUMP_FILE_LIMIT);
+            if not PROV_VIRTUOSO_DUMP_COMPRESSION:
+                cmd.append("--no-compression");
+            run(cmd);
 
         print("Finished task Upload");
 
