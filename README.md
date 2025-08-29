@@ -4,6 +4,7 @@
 ## Prerequisites
 Python
 Luigi
+Poetry
 oc_ocdm
 oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)
 oc_validator

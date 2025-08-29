@@ -6,6 +6,7 @@ import socket;
 import time;
 import subprocess;
 import yaml;
+import os;
 from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
@@ -18,6 +19,7 @@ PREPROCESS_DIR = "../oc_meta/oc_meta/run/meta/preprocess_input.py";
 OC_VALIDATOR_DIR = "./oc_validator/oc_validator/main.py";
 OC_VIRTUOSO_UTILITIES_DIR = "./virtuoso_utilities/virtuoso_utilities";
 OC_META_DIR = "./oc_meta/oc_meta/run/meta_process.py";
+OC_META_DIR_ERROR = "./oc_meta/oc_meta/run/upload/on_triplestore.py";
 OC_META_VAL_DIR = "./oc_meta/oc_meta/run/meta/check_results.py";
 OC_META_CSV = "./oc_meta/oc_meta/run/csv_generator_lite.py";
 META2REDIS_DIR = "index/scripts/ocworkflow.py/populate_redis()";
@@ -25,13 +27,15 @@ OC_INDEX_DIR = "index/scripts/ocworkflow.py/gen_zipbatch()";
 UPLOAD_DIR = "";
 PUBLICATION_DIR = "";
 
-FUSEKI_IMAGE = "stain/jena-fuseki"
-REDIS_IMAGE = "redis:7-alpine"
-REDIS_CONTAINER = "my-redis"
-FUSEKI_CONTAINER = "my-fuseki"
+FUSEKI_IMAGE = "stain/jena-fuseki";
+REDIS_IMAGE = "redis:7-alpine";
+BLAZEGRAPH_IMAGE = "lyrasis/blazegraph:2.1.5";
+REDIS_CONTAINER = "my-redis";
+FUSEKI_CONTAINER = "my-fuseki";
+BLAZEGRAPH_CONTAINER = "my-blazegraph";
 
 # preprocess_input default values
-PREPROCESS_STORAGE_TYPE = "sparql" # can be "redis" or "sparql"
+PREPROCESS_STORAGE_TYPE = "sparql"; # can be "redis" or "sparql"
 PREPROCESS_REDIS_DB_NUMBER = "10";
 PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
 
@@ -39,13 +43,14 @@ PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
 VALIDATION_TYPE = "2"; # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
 
 # values for SPARQL database for META
+META_CONFIG_PATH = "dir/temp/meta_config.yaml"; # directory where the meta_config.yaml will be generated
 META_TRIPLESTORE_URL = "http://127.0.0.1:8805/sparql"; # Endpoint URL to load the output RDF
 META_PROVENANCE_TRIPLESTORE_URL = "http://127.0.0.1:8806/sparql"; #TODO this should always be virtuoso no?
 META_BASE_IRI = "https://w3id.org/oc/meta/"; # The base URI of entities on Meta. This setting can be safely left as is
 META_CONTEXT_PATH = "https://w3id.org/oc/corpus/context.json"; # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
 META_RESP_AGENT = "https://w3id.org/oc/meta/prov/pa/1"; # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
 META_SOURCE = "https://api.crossref.org/"; # Data source URL. This setting can be safely left as is
-META_OUTPUT_DIR = OUTPUT_DIR + "/meta";
+META_OUTPUT_DIR = OUTPUT_DIR + "/meta"; #
 META_REDIS_HOST = "localhost"; #
 META_REDIS_PORT = 6379; #
 META_REDIS_DB = 0; #
@@ -229,7 +234,7 @@ class Preprocess(luigi.Task):
         print("Finished task Preprocess");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
     
 class Validation(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -279,7 +284,7 @@ class Validation(luigi.Task):
         print("Finished task Validation");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
 class DatabaseSwitchOn(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -290,13 +295,29 @@ class DatabaseSwitchOn(luigi.Task):
     def run(self):
         print("Running task DatabaseSwitchOn");
         
-        #TODO turn on META (Blazegraph?), PROV (Virtuoso apparently?) and INDEX (QLEVER in Docker) dbs ig
-        print("Placeholder - turn on META, PROV and INDEX");
-        
         # triplestore for META (ask Arcangelo which one)
+        u = urlparse(META_TRIPLESTORE_URL);
+        host = u.hostname or "127.0.0.1";
+        port = u.port or (443 if u.scheme == "https" else 80);
+
+        docker_rm(BLAZEGRAPH_CONTAINER);
+
+        run([
+            "docker", "run", "-d",
+            "--name", BLAZEGRAPH_CONTAINER,
+            "-p", f"{port}:8080",
+            BLAZEGRAPH_IMAGE
+        ]);
+
+        wait_for_port(host, port);
+
+        print("Blazegraph is up.");
+        print("Workbench UI:", f"{u.scheme}://{host}:{port}/blazegraph");
+        print("SPARQL endpoint:", f"{u.scheme}://{host}:{port}/blazegraph/sparql");
 
 
         # QLEVER in Docker for INDEX???
+
 
 
         # Virtuoso in Docker for PROV
@@ -362,7 +383,7 @@ class DatabaseSwitchOn(luigi.Task):
         print("Finished task DatabaseSwitchOn");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
 class OCMeta(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -373,7 +394,7 @@ class OCMeta(luigi.Task):
     def run(self):
         print("Running task OCMeta");
         
-        #TODO create config in yaml based on the meta configuration values
+        # create config in yaml based on the meta configuration values
         config = {}
         config["triplestore_url"] = META_TRIPLESTORE_URL;
         config["provenance_triplestore_url"] = META_PROVENANCE_TRIPLESTORE_URL;
@@ -409,22 +430,22 @@ class OCMeta(luigi.Task):
             config["generate_rdf_files"] = "False";
         config["virtuoso_full_text_search"] = "True";
         
-        
-
-
-        path = Path("dir/temp/meta_config.yaml")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
+        config_path = Path(META_CONFIG_PATH)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with config_path.open("w", encoding="utf-8") as f:
             yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
 
-        #TODO call oc_meta to update META and PROV with validated meta data
-        print("Placeholder - call oc_meta to update META and PROV with validated meta data");
+        try: # run oc_meta
+            cmd = ["poetry", "run", "python", OC_META_DIR, "-c", os.fspath(config_path)];
+            run(cmd);
+        except subprocess.CalledProcessError: # call on_triplestore to upload triples in case of error
+            cmd = ["poetry", "run", "python", OC_META_DIR_ERROR, META_TRIPLESTORE_URL, os.fspath(META_OUTPUT_RDF_DIR)];
+            run(cmd);
         
-
         print("Finished task OCMeta");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
     
 class OCMetaVal(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -435,13 +456,15 @@ class OCMetaVal(luigi.Task):
     def run(self):
         print("Running task OCMetaVal");
         
-        #TODO validate new data in META nad PROV with oc_meta_val
-        print("Placeholder - call oc_meta_val to validate new data in META and PROV");
-        
+        #validate new data in META nad PROV with oc_meta_val
+        # META_OUTPUT_DIR might need to be more specific here
+        cmd = ["python", OC_META_VAL_DIR, META_OUTPUT_DIR, META_CONFIG_PATH];
+        run(cmd);
+
         print("Finished task OCMetaVal");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
 class OCMetaCsv(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -452,13 +475,15 @@ class OCMetaCsv(luigi.Task):
     def run(self):
         print("Running task OCMetaCsv");
         
-        #TODO if good then call oc_meta_csv to construct meta.csv with data from META
         print("placeholder - call oc_meta_csv to construct meta.csv with data from META");
         
+        cmd = ["python", OC_META_CSV, "--config", META_CONFIG_PATH, "--output", META_OUTPUT_DIR + "/csv", "--redis-host", META_REDIS_HOST, "--redis-port", META_REDIS_PORT, "--redis-db", META_REDIS_DB];
+        run(cmd);
+
         print("Finished task OCMetaCsv");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
     
 class Meta2Redis(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -472,13 +497,13 @@ class Meta2Redis(luigi.Task):
         #TODO turn on in-RAM REDIS?
         print("Placeholder - turn on in-RAM REDIS");
 
-        #TODO call meta2redis to upload the data from constructed meta.csv to in-RAM REDIS
         print("Placeholder - call meta2redis to upload the data from constructed meta.csv to in-RAM REDIS");
-        
+        cmd = ["python", META2REDIS_DIR, "--dump", META_OUTPUT_DIR + "csv"];
+
         print("Finished task Meta2Redis");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
 class OCIndex(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -495,7 +520,7 @@ class OCIndex(luigi.Task):
         print("Finished task OCIndex");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
 class Upload(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -509,7 +534,7 @@ class Upload(luigi.Task):
         #TODO call upload to use raw data to update INDEX and PROV(?)
         print("Placeholder - call upload to use raw data to update INDEX and PROV?");
         
-        #TODO: virtuoso_utilities/dump_quadstore.py to get PROV dump
+        #virtuoso_utilities/dump_quadstore.py to get PROV dump
         if PROV_VIRTUOSO_DUMP:
             cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/dump_quadstore.py"];
             cmd.append("--password")
@@ -533,7 +558,7 @@ class Upload(luigi.Task):
         print("Finished task Upload");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
     
 class Publication(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -550,7 +575,7 @@ class Publication(luigi.Task):
         print("Finished task Publication");
 
     def output(self):
-        return luigi.LocalTarget("dupa-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
 if __name__ == "__main__":
 
