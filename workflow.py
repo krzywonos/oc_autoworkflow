@@ -258,11 +258,9 @@ class Validation(luigi.Task):
         RENAME_MAP = {"citing": "citing_id", "cited": "cited_id"};
 
         for csv_file in CSV_DIR.glob("*.csv"):
-            print(f"Processing {csv_file} ...");
             df = pd.read_csv(csv_file);
             keep = [c for c in COLUMNS_TO_KEEP if c in df.columns];
             if not keep:
-                print(f"⚠️ Skipping {csv_file}, none of {COLUMNS_TO_KEEP} found");
                 continue;
 
             df = df[keep].rename(columns=RENAME_MAP);
