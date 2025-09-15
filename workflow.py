@@ -7,6 +7,8 @@ import time;
 import subprocess;
 import yaml;
 import os;
+import requests;
+import pandas as pd;
 from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
@@ -16,14 +18,14 @@ INPUT_DIR = "dir/input";
 TEMP_DIR = "dir/temp";
 OUTPUT_DIR = "dir/output";
 PREPROCESS_DIR = "../oc_meta/oc_meta/run/meta/preprocess_input.py";
-OC_VALIDATOR_DIR = "./oc_validator/oc_validator/main.py";
-OC_VIRTUOSO_UTILITIES_DIR = "./virtuoso_utilities/virtuoso_utilities";
-OC_META_DIR = "./oc_meta/oc_meta/run/meta_process.py";
-OC_META_DIR_ERROR = "./oc_meta/oc_meta/run/upload/on_triplestore.py";
-OC_META_VAL_DIR = "./oc_meta/oc_meta/run/meta/check_results.py";
-OC_META_CSV = "./oc_meta/oc_meta/run/csv_generator_lite.py";
-META2REDIS_DIR = "index/scripts/ocworkflow.py/populate_redis()";
-OC_INDEX_DIR = "index/scripts/ocworkflow.py/gen_zipbatch()";
+OC_VALIDATOR_DIR = "../oc_validator/oc_validator/main.py";
+OC_VIRTUOSO_UTILITIES_DIR = "../virtuoso_utilities/virtuoso_utilities";
+OC_META_DIR = "../oc_meta/oc_meta/run/meta_process.py";
+OC_META_DIR_ERROR = "../oc_meta/oc_meta/run/upload/on_triplestore.py";
+OC_META_VAL_DIR = "../oc_meta/oc_meta/run/meta/check_results.py";
+OC_META_CSV = "../oc_meta/oc_meta/run/csv_generator_lite.py";
+META2REDIS_DIR = "../index/scripts/ocworkflow.py/populate_redis()";
+OC_INDEX_DIR = "../index/scripts/ocworkflow.py/gen_zipbatch()";
 UPLOAD_DIR = "";
 PUBLICATION_DIR = "";
 
@@ -41,15 +43,19 @@ PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
 
 # validation values
 VALIDATION_TYPE = "2"; # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
+VALIDATION_ELIMINATION = "file"; # line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
 
 # values for SPARQL database for META
 META_CONFIG_PATH = "dir/temp/meta_config.yaml"; # directory where the meta_config.yaml will be generated
-META_TRIPLESTORE_URL = "http://127.0.0.1:8805/sparql"; # Endpoint URL to load the output RDF
-META_PROVENANCE_TRIPLESTORE_URL = "http://127.0.0.1:8806/sparql"; #TODO this should always be virtuoso no?
+META_TRIPLESTORE_URL = "http://127.0.0.1:8888"; # Endpoint URL to load the output RDF
+META_PROVENANCE_TRIPLESTORE_URL = "http://127.0.0.1:8888"; #TODO this should always be virtuoso no?
 META_BASE_IRI = "https://w3id.org/oc/meta/"; # The base URI of entities on Meta. This setting can be safely left as is
 META_CONTEXT_PATH = "https://w3id.org/oc/corpus/context.json"; # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
 META_RESP_AGENT = "https://w3id.org/oc/meta/prov/pa/1"; # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
 META_SOURCE = "https://api.crossref.org/"; # Data source URL. This setting can be safely left as is
+META_CACHE_ENDPOINT = "";
+META_CACHE_UPDATE_ENDPOINT = "";
+META_GRAPHDB_CONNECTOR_NAME = "";
 META_OUTPUT_DIR = OUTPUT_DIR + "/meta"; #
 META_REDIS_HOST = "localhost"; #
 META_REDIS_PORT = 6379; #
@@ -72,9 +78,9 @@ META_USE_DOI_API_SERVICE = 0; # If True, use the DOI API service to check if DOI
 
 
 # values for Virtuoso in Docker for PROV
-PROV_VIRTUOSO_BULK_LOAD = 1; # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
+PROV_VIRTUOSO_BULK_LOAD = 0; # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
 PROV_VIRTUOSO_BULK_LOAD_DIR = "dir/input/virtuoso"; # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO
-PROV_VIRTUOSO_DUMP = 1; #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
+PROV_VIRTUOSO_DUMP = 0; #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
 PROV_VIRTUOSO_DUMP_DIR = "dir/output/n-quads-dump"; # directory for n-quad dump containing PROV from Virtuoso 
 PROV_VIRTUOSO_DUMP_FILE_LIMIT = 100000000; #maximum length of dump files in bytes
 PROV_VIRTUOSO_DUMP_COMPRESSION = 1; # default: 1. set to 0 to disable gzip compression
@@ -91,6 +97,7 @@ PROV_VIRTUOSO_MEMORY = "16g"; # defaults to 2/3 of host memory with psutil insta
 PROV_VIRTUOSO_DETACH = 1; # default: 1. Run container in detached mode.
 PROV_VIRTUOSO_WAIT_READY = 1; # default: 1. Wait until Virtuoso is ready to accept connections.
 PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS = 1; # default: 1. Makes database publicly writable.
+PROV_VIRTUOSO_FORCE_REMOVE = 1;
 
 # helpers
 
@@ -245,6 +252,22 @@ class Validation(luigi.Task):
     def run(self):
         print("Running task Validation");
 
+        # prune additional data from index-preprocessed
+        CSV_DIR = Path("dir/temp/index-preprocessed");
+        COLUMNS_TO_KEEP = ["citing", "cited"];
+        RENAME_MAP = {"citing": "citing_id", "cited": "cited_id"};
+
+        for csv_file in CSV_DIR.glob("*.csv"):
+            print(f"Processing {csv_file} ...");
+            df = pd.read_csv(csv_file);
+            keep = [c for c in COLUMNS_TO_KEEP if c in df.columns];
+            if not keep:
+                print(f"⚠️ Skipping {csv_file}, none of {COLUMNS_TO_KEEP} found");
+                continue;
+
+            df = df[keep].rename(columns=RENAME_MAP);
+            df.to_csv(csv_file, index=False);
+
         # oc_validator for meta CSVs
         folder = Path("dir/temp/meta-preprocessed");
         counter = 0;
@@ -278,8 +301,13 @@ class Validation(luigi.Task):
                     v = Validator(str(file), TEMP_DIR + "/index-validated", verify_id_existence = False);
                     v.validate();
                 counter += 1;
-                print("Validated META file no. " + str(counter));
-        #TODO?: eliminate incorrectly validated lines?
+                print("Validated INDEX file no. " + str(counter));
+        
+        #TODO?: eliminate incorrectly validated lines or files
+        if VALIDATION_ELIMINATION == "file":
+            print(":)");
+        elif VALIDATION_ELIMINATION == "line":
+            print("");
 
         print("Finished task Validation");
 
@@ -295,25 +323,95 @@ class DatabaseSwitchOn(luigi.Task):
     def run(self):
         print("Running task DatabaseSwitchOn");
         
-        # triplestore for META (ask Arcangelo which one)
-        u = urlparse(META_TRIPLESTORE_URL);
-        host = u.hostname or "127.0.0.1";
-        port = u.port or (443 if u.scheme == "https" else 80);
+        # # triplestore for META (ask Arcangelo which one)
+        # u = urlparse(META_TRIPLESTORE_URL);
+        # host = u.hostname or "127.0.0.1";
+        # port = u.port or (443 if u.scheme == "https" else 80);
 
-        docker_rm(BLAZEGRAPH_CONTAINER);
+        # docker_rm(BLAZEGRAPH_CONTAINER);
 
-        run([
-            "docker", "run", "-d",
-            "--name", BLAZEGRAPH_CONTAINER,
-            "-p", f"{port}:8080",
-            BLAZEGRAPH_IMAGE
-        ]);
+        # run([
+        #     "docker", "run", "-d",
+        #     "--name", BLAZEGRAPH_CONTAINER,
+        #     "-p", f"{port}:8080",
+        #     BLAZEGRAPH_IMAGE
+        # ]);
 
-        wait_for_port(host, port);
+        # wait_for_port(host, port);
 
-        print("Blazegraph is up.");
-        print("Workbench UI:", f"{u.scheme}://{host}:{port}/blazegraph");
-        print("SPARQL endpoint:", f"{u.scheme}://{host}:{port}/blazegraph/sparql");
+        # # 1
+        # NAMESPACE = "kb"
+
+        # meta = urlparse(META_TRIPLESTORE_URL)
+        # base_root = f"{meta.scheme}://{host}:{port}"
+
+        # if "/bigdata" in META_TRIPLESTORE_URL:
+        #     base_path = "/bigdata"
+        # elif "/blazegraph" in META_TRIPLESTORE_URL:
+        #     base_path = "/blazegraph"
+        # else:
+        #     base_path = "/bigdata"
+
+        # ns_base   = f"{base_root}{base_path}/namespace/{NAMESPACE}"
+        # sparql_url = f"{ns_base}/sparql"
+        # textindex_url = f"{ns_base}/textIndex"
+
+        # deadline = time.time() + 60 
+        # ready = False
+        # last_err = None
+        # headers_probe = {"Accept": "*/*"}
+
+        # while time.time() < deadline:
+        #     try:
+        #         resp = requests.get(sparql_url, headers=headers_probe, timeout=5)
+        #         if 200 <= resp.status_code < 500:
+        #             ready = True
+        #             break
+        #     except Exception as e:
+        #         last_err = e
+        #     time.sleep(1)
+
+        # if not ready:
+        #     raise RuntimeError(
+        #         f"Namespace SPARQL not reachable at {sparql_url} after waiting. "
+        #         f"Check base path ({base_path}) and namespace ({NAMESPACE}). Last error: {last_err}"
+        #     )
+
+        # uris = [
+        #     "http://www.essepuntato.it/2010/06/literalreification/hasLiteralValue",
+        # ]
+        # data = [("uri", u) for u in uris] + [("force-index-create", "true")]
+
+        # r = requests.post(textindex_url, data=data, timeout=120)
+        # r.raise_for_status()
+        # print(f"Text index created/rebuilt via {textindex_url}: {r.status_code}")
+        # # 2
+
+        # print("Text index created/rebuilt:", r.status_code)
+
+        # print("Blazegraph is up.");
+        # print("Workbench UI:", f"{u.scheme}://{host}:{port}/blazegraph");
+        # print("SPARQL endpoint:", f"{u.scheme}://{host}:{port}/blazegraph/sparql");
+
+        # endpoint = "http://127.0.0.1:8805/bigdata/namespace/kb/sparql"
+        # construct_query = """\
+        # CONSTRUCT { ?s ?p ?o }
+        # WHERE { ?s ?p ?o }
+        # LIMIT 1
+        # """
+
+        # r = requests.post(
+        #     endpoint,
+        #     data=construct_query.encode("utf-8"),
+        #     headers={
+        #         "Content-Type": "application/sparql-query",  # crucial
+        #         "Accept": "application/rdf+xml",             # or "text/turtle"
+        #     },
+        #     timeout=60,
+        # )
+        # print(r.status_code, r.headers.get("Content-Type"))
+        # print(r.text[:400])
+        # r.raise_for_status()
 
 
         # QLEVER in Docker for INDEX???
@@ -353,11 +451,14 @@ class DatabaseSwitchOn(luigi.Task):
                 cmd.append("--wait-ready");
             if PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS == 1:
                 cmd.append("--enable-write-permissions");
+            if PROV_VIRTUOSO_FORCE_REMOVE == 1:
+                cmd.append("--force-remove");
         cmd.append("--mount-volume");
         cmd.append(PROV_VIRTUOSO_DUMP_DIR);
         run(cmd);
 
         # virtuoso_utilities/bulk_load.py n-quads to populate PROV if enabled
+        #TODO - ask Arcangelo regarding how to probide n-quads to Virtuoso correctly
         if PROV_VIRTUOSO_BULK_LOAD:
             cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/bulk_load.py"];
             cmd.append("--data-directory");
@@ -401,6 +502,13 @@ class OCMeta(luigi.Task):
         config["provenance_endpoints"] = "[]";
         config["input_csv_dir"] = TEMP_DIR + "/meta-preprocessed";
         config["base_output_dir"] = META_OUTPUT_DIR;
+        config["resp_agent"] = META_RESP_AGENT;
+        config["virtuoso_full_text_search"] = "True";
+        config["blazegraph_full_text_search"] = "False";
+        config["fuseki_full_text_search"] = "False";
+        config["cache_endpoint"] = META_CACHE_ENDPOINT;
+        config["cache_update_endpoint"] = META_CACHE_UPDATE_ENDPOINT;
+        config["graphdb_connector_name"] = META_GRAPHDB_CONNECTOR_NAME;
 
         config["output_rdf_dir"] = META_OUTPUT_RDF_DIR;
         config["base_iri"] = META_BASE_IRI;
@@ -428,7 +536,6 @@ class OCMeta(luigi.Task):
             config["generate_rdf_files"] = "True";
         else:
             config["generate_rdf_files"] = "False";
-        config["virtuoso_full_text_search"] = "True";
         
         config_path = Path(META_CONFIG_PATH)
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -436,10 +543,10 @@ class OCMeta(luigi.Task):
             yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
 
         try: # run oc_meta
-            cmd = ["poetry", "run", "python", OC_META_DIR, "-c", os.fspath(config_path)];
+            cmd = ["python", OC_META_DIR, "-c", os.fspath(config_path)];
             run(cmd);
         except subprocess.CalledProcessError: # call on_triplestore to upload triples in case of error
-            cmd = ["poetry", "run", "python", OC_META_DIR_ERROR, META_TRIPLESTORE_URL, os.fspath(META_OUTPUT_RDF_DIR)];
+            cmd = ["python", OC_META_DIR_ERROR, META_TRIPLESTORE_URL, os.fspath(META_OUTPUT_RDF_DIR)];
             run(cmd);
         
         print("Finished task OCMeta");
@@ -577,10 +684,29 @@ class Publication(luigi.Task):
     def output(self):
         return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
+class DatabaseSwitchOff(luigi.Task):
+    param = luigi.Parameter(default = 42);
+
+    def requires(self):
+        return DatabaseSwitchOn(self.param);
+
+    def run(self):
+        print("Running task DatabaseSwitchOff");
+        
+        # turning blazegraph off
+        docker_rm(BLAZEGRAPH_CONTAINER);
+        #TODO - turn off virtuoso
+        print("Placeholder - turn off Virtuoso here");
+        docker_rm(PROV_VIRTUOSO_NAME);
+        #TODO - turn off QLEVER or whatever is used for index
+        print("Placeholder - turn off QLEVER here");
+
+        print("Finished task DatabaseSwitchOff");
+
 if __name__ == "__main__":
 
     task_preprocess = Preprocess();
-    #task_validation = Validation();
+    task_validation = Validation();
     task_dbswitchon = DatabaseSwitchOn();
     task_ocmeta = OCMeta();
     task_ocmetaval = OCMetaVal();
@@ -589,18 +715,20 @@ if __name__ == "__main__":
     task_ocindex = OCIndex();
     task_upload = Upload();
     task_publication = Publication();
+    task_dbswitchoff = DatabaseSwitchOff();
 
     start = time.time();
     print("");
     task_preprocess.run();
-    #task_validation.run();
-    task_dbswitchon.run();
-    task_ocmeta.run();
-    task_ocmetaval.run();
-    task_ocmetacsv.run();
-    task_meta2redis.run();
-    task_ocindex.run();
-    task_upload.run();
-    task_publication.run();
+    task_validation.run();
+    #task_dbswitchon.run();
+    #task_ocmeta.run();
+    #task_ocmetaval.run();
+    #task_ocmetacsv.run();
+    #task_meta2redis.run();
+    #task_ocindex.run();
+    #task_upload.run();
+    #task_publication.run();
+    #task_dbswitchoff.run();
     end = time.time();
     print("Total runtime: " + str(end-start) + "s");

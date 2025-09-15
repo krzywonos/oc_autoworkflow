@@ -4,11 +4,11 @@
 ## Prerequisites
 Python
 Luigi
-Poetry
+Pandas
 oc_ocdm
 oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)
 oc_validator
-virtuoso_utilities dependencies (isort)
+virtuoso_utilities
 
 oc_meta code stored locally
 virtuoso_utilities stored locally
