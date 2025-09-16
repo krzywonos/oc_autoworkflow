@@ -9,6 +9,8 @@ import yaml;
 import os;
 import requests;
 import pandas as pd;
+import shutil;
+import json;
 from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
@@ -38,12 +40,13 @@ BLAZEGRAPH_CONTAINER = "my-blazegraph";
 
 # preprocess_input default values
 PREPROCESS_STORAGE_TYPE = "sparql"; # can be "redis" or "sparql"
+PREPROCESS_REDIS_PORT = "6379;"
 PREPROCESS_REDIS_DB_NUMBER = "10";
 PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
 
 # validation values
 VALIDATION_TYPE = "2"; # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
-VALIDATION_ELIMINATION = "file"; # line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
+VALIDATION_ELIMINATION = "line"; # line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
 
 # values for SPARQL database for META
 META_CONFIG_PATH = "dir/temp/meta_config.yaml"; # directory where the meta_config.yaml will be generated
@@ -58,8 +61,8 @@ META_CACHE_UPDATE_ENDPOINT = "";
 META_GRAPHDB_CONNECTOR_NAME = "";
 META_OUTPUT_DIR = OUTPUT_DIR + "/meta"; #
 META_REDIS_HOST = "localhost"; #
-META_REDIS_PORT = 6379; #
-META_REDIS_DB = 0; #
+META_REDIS_PORT = "6379"; #
+META_REDIS_DB = "0"; #
 META_REDIS_CACHE_DB = 1; #
 META_SUPPLIER_PREFIX = "060"; # A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
 META_RDF_OUTPUT_IN_CHUNKS = 0; # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
@@ -138,89 +141,6 @@ def virtuoso_rebuild_index():
     cmd.append(PROV_VIRTUOSO_NAME);
     run(cmd);
 
-# redis
-
-def start_redis(container=REDIS_CONTAINER, port=6379):
-    docker_rm(container);
-    run(["docker", "run", "-d", "--name", container, "-p", f"{port}:6379", REDIS_IMAGE]);
-    wait_for_port("localhost", port);
-    print(f"Redis ready at redis://localhost:{port}");
-
-# fuseki
-
-def parse_fuseki_from_endpoint(endpoint: str):
-    """
-    Extract host, dataset, port from a SPARQL endpoint.
-    Example: http://localhost:3030/ds/sparql -> host = localhost, dataset = ds, port = 3030
-    """
-    u = urlparse(endpoint);
-    host = u.hostname or "localhost";
-    port = u.port or (443 if u.scheme == "https" else 80);
-
-    # path parts without empties
-    parts = [p for p in (u.path or "").split("/") if p];
-    if not parts:
-        raise ValueError(f"Cannot determine dataset from endpoint path: {endpoint}");
-    # common patterns end with 'sparql' or 'query'
-    if parts[-1].lower() in ("sparql", "query"):
-        if len(parts) < 2:
-            raise ValueError(f"Endpoint path too short to infer dataset: {endpoint}");
-        dataset = parts[-2];
-    else:
-        dataset = parts[-1];
-
-    return host, dataset, port;
-
-def start_fuseki_for_endpoint(endpoint: str, container=FUSEKI_CONTAINER):
-    """
-    Start an in-memory Fuseki so that the query endpoint will be at exactly the
-    dataset+port implied by `endpoint`. (We publish the container's 3030 to the
-    host port parsed from the URL, and create an in-memory dataset with that name.)
-    """
-    host, dataset, port = parse_fuseki_from_endpoint(endpoint)
-
-    if host not in ("localhost", "127.0.0.1"): 
-        print(f"Endpoint host is '{host}'. This script exposes Fuseki on the local machine; \n please access it via http://localhost:{port}/{dataset}/sparql");
-
-    docker_rm(container);
-    run(["docker", "run", "-d", "--name", container, "-p", f"{port}:3030", FUSEKI_IMAGE, "--mem", f"/{dataset}"]);
-    wait_for_port("localhost", port);
-    print(f"Fuseki ready at http://localhost:{port}/{dataset}/sparql (requested: {endpoint})");
-
-# preprocess calls
-
-def run_preprocess_redis(redis_db: int):
-    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "redis", "--redis-db", redis_db];
-    run(cmd);
-    print("Input for meta preprocessed");
-    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "redis", "--redis-db", redis_db];
-    run(cmd);
-    print("Input for index preprocessed.");
-
-def run_preprocess_sparql(sparql_endpoint: str):
-    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint];
-    run(cmd);
-    print("Input for meta preprocessed");
-    cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", sparql_endpoint];
-    run(cmd);
-    print("Input for index preprocessed.");
-
-# preprocess pipelines
-
-def preprocess_pipeline_with_redis(redis_db: int):
-    try:
-        start_redis();
-        run_preprocess_redis(redis_db);
-    finally:
-        docker_rm(REDIS_CONTAINER);
-
-def preprocess_pipeline_with_sparql(sparql_endpoint: str):
-    try:
-        start_fuseki_for_endpoint(sparql_endpoint);
-        run_preprocess_sparql(sparql_endpoint);
-    finally:
-        docker_rm(FUSEKI_CONTAINER);
-
 # luigi tasks
 
 class Preprocess(luigi.Task):
@@ -232,9 +152,55 @@ class Preprocess(luigi.Task):
         print("Placeholder - call preprocess with all files in INPUT_DIR and store output in TEMP_DIR");
 
         if(PREPROCESS_STORAGE_TYPE == "sparql"):
-            preprocess_pipeline_with_sparql(PREPROCESS_SPARQL_ENDPOINT);
+            try:
+                u = urlparse(PREPROCESS_SPARQL_ENDPOINT);
+                host = u.hostname or "localhost";
+                port = u.port or (443 if u.scheme == "https" else 80);
+
+                parts = [p for p in (u.path or "").split("/") if p];
+                if not parts:
+                    raise ValueError(f"Cannot determine dataset from endpoint path: {PREPROCESS_SPARQL_ENDPOINT}");
+                
+                if parts[-1].lower() in ("sparql", "query"):
+                    if len(parts) < 2:
+                        raise ValueError(f"Endpoint path too short to infer dataset: {PREPROCESS_SPARQL_ENDPOINT}");
+                    dataset = parts[-2];
+                else:
+                    dataset = parts[-1];
+
+                if host not in ("localhost", "127.0.0.1"): 
+                    print(f"Endpoint host is '{host}'. This script exposes Fuseki on the local machine; \n please access it via http://localhost:{port}/{dataset}/sparql");
+
+                docker_rm(FUSEKI_CONTAINER);
+                run(["docker", "run", "-d", "--name", FUSEKI_CONTAINER, "-p", f"{port}:3030", FUSEKI_IMAGE, "--mem", f"/{dataset}"]);
+                wait_for_port("localhost", port);
+                print(f"Fuseki ready at http://localhost:{port}/{dataset}/sparql (requested: {PREPROCESS_SPARQL_ENDPOINT})");
+
+                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", PREPROCESS_SPARQL_ENDPOINT];
+                run(cmd);
+                print("Input for meta preprocessed");
+                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", PREPROCESS_SPARQL_ENDPOINT];
+                run(cmd);
+                print("Input for index preprocessed.");
+            finally:
+                docker_rm(FUSEKI_CONTAINER);
+        
         elif(PREPROCESS_STORAGE_TYPE == "redis"):
-            preprocess_pipeline_with_redis(PREPROCESS_REDIS_DB_NUMBER);
+            try:
+                docker_rm(REDIS_CONTAINER);
+                run(["docker", "run", "-d", "--name", REDIS_CONTAINER, "-p", f"{PREPROCESS_REDIS_PORT}:6379", REDIS_IMAGE]);
+                wait_for_port("localhost", PREPROCESS_REDIS_PORT);
+                print(f"Redis ready at redis://localhost:{PREPROCESS_REDIS_PORT}");
+
+                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "redis", "--redis-db", PREPROCESS_REDIS_DB_NUMBER];
+                run(cmd);
+                print("Input for meta preprocessed");
+                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "redis", "--redis-db", PREPROCESS_REDIS_DB_NUMBER];
+                run(cmd);
+                print("Input for index preprocessed.");
+            finally:
+                docker_rm(REDIS_CONTAINER);
+        
         else:
             print("Incorrect value for PREPROCESS_STORAGE_TYPE");
 
@@ -252,7 +218,7 @@ class Validation(luigi.Task):
     def run(self):
         print("Running task Validation");
 
-        # prune additional data from index-preprocessed
+        # prune id data from index-preprocessed
         CSV_DIR = Path("dir/temp/index-preprocessed");
         COLUMNS_TO_KEEP = ["citing", "cited"];
         RENAME_MAP = {"citing": "citing_id", "cited": "cited_id"};
@@ -266,46 +232,166 @@ class Validation(luigi.Task):
             df = df[keep].rename(columns=RENAME_MAP);
             df.to_csv(csv_file, index=False);
 
-        # oc_validator for meta CSVs
-        folder = Path("dir/temp/meta-preprocessed");
-        counter = 0;
-        for file in folder.iterdir():
-            if file.is_file():
-                if VALIDATION_TYPE == "0":
-                    v = Validator(str(file), TEMP_DIR + "/meta-validated");
-                    v.validate();
-                if VALIDATION_TYPE == "1":
-                    v = Validator(str(file), TEMP_DIR + "/meta-validated", use_meta_endpoint = True);
-                    v.validate();
-                if VALIDATION_TYPE == "2":
-                    v = Validator(str(file), TEMP_DIR + "/meta-validated", verify_id_existence = False);
-                    v.validate();
-                counter += 1;
-                print("Validated META file no. " + str(counter));
+        # validation of meta
+        meta_in = Path("dir/temp/meta-preprocessed");
+        meta_val_dir = Path(TEMP_DIR) / "meta-validated" / "validation";
+        meta_out_dir = Path(TEMP_DIR) / "meta-validated";
+        meta_val_dir.mkdir(parents=True, exist_ok=True);
+        meta_map = {};
 
-        # oc_validator for index CSVs
-        # oc_validator currently rejects preprocessed index CSVs
-        folder = Path("dir/temp/index-preprocessed");
         counter = 0;
-        for file in folder.iterdir():
-            if file.is_file():
-                if VALIDATION_TYPE == "0":
-                    v = Validator(str(file), TEMP_DIR + "/index-validated");
-                    v.validate();
-                if VALIDATION_TYPE == "1":
-                    v = Validator(str(file), TEMP_DIR + "/index-validated", use_meta_endpoint = True);
-                    v.validate();
-                if VALIDATION_TYPE == "2":
-                    v = Validator(str(file), TEMP_DIR + "/index-validated", verify_id_existence = False);
-                    v.validate();
-                counter += 1;
-                print("Validated INDEX file no. " + str(counter));
-        
-        #TODO?: eliminate incorrectly validated lines or files
+        for file in sorted(meta_in.iterdir()):
+            if not (file.is_file() and file.suffix.lower() == ".csv"):
+                continue;
+
+            # snapshot "before"
+            before = set(sorted(meta_val_dir.glob("out_validate_meta*.json")));
+
+            # run validator
+            if VALIDATION_TYPE == "0":
+                v = Validator(str(file), str(meta_val_dir));
+            elif VALIDATION_TYPE == "1":
+                v = Validator(str(file), str(meta_val_dir), use_meta_endpoint=True);
+            elif VALIDATION_TYPE == "2":
+                v = Validator(str(file), str(meta_val_dir), verify_id_existence=False);
+            else:
+                raise ValueError(f"Unknown VALIDATION_TYPE={VALIDATION_TYPE}");
+            v.validate();
+
+            time.sleep(0.05);
+
+            # detect the JSON that appeared
+            after = sorted(meta_val_dir.glob("out_validate_meta*.json"));
+            new_jsons = [p for p in after if p not in before];
+            json_path = max(new_jsons, key=lambda p: p.stat().st_mtime) if new_jsons else None;
+
+            # parse bad rows from JSON
+            bad_rows = set();
+            if json_path and json_path.exists():
+                try:
+                    doc = json.loads(json_path.read_text(encoding="utf-8"));
+                    if isinstance(doc, list):
+                        for entry in doc:
+                            pos = entry.get("position") or {};
+                            table = pos.get("table");
+                            if isinstance(table, dict):
+                                for row_key in table.keys():
+                                    try:
+                                        bad_rows.add(int(row_key));
+                                    except (ValueError, TypeError):
+                                        pass;
+                except Exception as e:
+                    print(f"Could not parse {json_path}: {e}");
+
+
+            meta_map[file] = {"json": json_path, "bad_rows": bad_rows};
+            counter += 1;
+            print(f"Validated META file no. {counter}: {file.name} → "
+                f"JSON: {json_path.name if json_path else '??'}, bad rows: {len(bad_rows)}");
+
+        # validation of index
+        index_in = Path("dir/temp/index-preprocessed");
+        index_val_dir = Path(TEMP_DIR) / "index-validated" / "validation";
+        index_out_dir = Path(TEMP_DIR) / "index-validated";
+        index_val_dir.mkdir(parents=True, exist_ok=True);
+        index_map = {};
+
+        counter = 0;
+        for file in sorted(index_in.iterdir()):
+            if not (file.is_file() and file.suffix.lower() == ".csv"):
+                continue;
+
+            before = set(sorted(index_val_dir.glob("out_validate_cits*.json")));
+
+            if VALIDATION_TYPE == "0":
+                v = Validator(str(file), str(index_val_dir));
+            elif VALIDATION_TYPE == "1":
+                v = Validator(str(file), str(index_val_dir), use_meta_endpoint=True);
+            elif VALIDATION_TYPE == "2":
+                v = Validator(str(file), str(index_val_dir), verify_id_existence=False);
+            else:
+                raise ValueError(f"Unknown VALIDATION_TYPE={VALIDATION_TYPE}");
+            v.validate();
+
+            time.sleep(0.05);
+
+            after = sorted(index_val_dir.glob("out_validate_cits*.json"));
+            new_jsons = [p for p in after if p not in before];
+            json_path = max(new_jsons, key=lambda p: p.stat().st_mtime) if new_jsons else None;
+
+            # parse bad rows from JSON
+            bad_rows = set();
+            if json_path and json_path.exists():
+                try:
+                    doc = json.loads(json_path.read_text(encoding="utf-8"));
+                    if isinstance(doc, list):
+                        for entry in doc:
+                            pos = entry.get("position") or {};
+                            table = pos.get("table");
+                            if isinstance(table, dict):
+                                for row_key in table.keys():
+                                    try:
+                                        bad_rows.add(int(row_key));
+                                    except (ValueError, TypeError):
+                                        pass;
+                except Exception as e:
+                    print(f"Could not parse {json_path}: {e}");
+
+
+            index_map[file] = {"json": json_path, "bad_rows": bad_rows};
+            counter += 1;
+            print(f"Validated INDEX file no. {counter}: {file.name} → "
+                f"JSON: {json_path.name if json_path else '??'}, bad rows: {len(bad_rows)}");
+
+        # elimination of incorrect entries
         if VALIDATION_ELIMINATION == "file":
-            print(":)");
+            print("Validation elimination mode: FILE");
+
+            # META
+            meta_out_dir.mkdir(parents=True, exist_ok=True);
+            for csv_path, info in meta_map.items():
+                if info["bad_rows"]:
+                    print(f"Skipping META file (has errors): {csv_path.name}");
+                else:
+                    shutil.copyfile(csv_path, meta_out_dir / csv_path.name);
+                    print(f"Copied META file: {csv_path.name}");
+
+            # INDEX
+            index_out_dir.mkdir(parents=True, exist_ok=True);
+            for csv_path, info in index_map.items():
+                if info["bad_rows"]:
+                    print(f"Skipping INDEX file (has errors): {csv_path.name}");
+                else:
+                    shutil.copyfile(csv_path, index_out_dir / csv_path.name);
+                    print(f"Copied INDEX file: {csv_path.name}");
+
         elif VALIDATION_ELIMINATION == "line":
-            print("");
+            print("Validation elimination mode: LINE");
+
+            # META
+            meta_out_dir.mkdir(parents=True, exist_ok=True);
+            for csv_path, info in meta_map.items():
+                df = pd.read_csv(csv_path);
+                if info["bad_rows"]:
+                    df = df.drop(index=[r for r in info["bad_rows"] if 0 <= r < len(df)]);
+                    print(f"Wrote META filtered CSV: {csv_path.name} (removed {len(info['bad_rows'])} lines)");
+                else:
+                    print(f"Copied META CSV without changes: {csv_path.name}");
+                df.to_csv(meta_out_dir / csv_path.name, index=False)
+
+            # INDEX
+            index_out_dir.mkdir(parents=True, exist_ok=True);
+            for csv_path, info in index_map.items():
+                df = pd.read_csv(csv_path);
+                if info["bad_rows"]:
+                    df = df.drop(index=[r for r in info["bad_rows"] if 0 <= r < len(df)]);
+                    print(f"Wrote INDEX filtered CSV: {csv_path.name} (removed {len(info['bad_rows'])} lines)");
+                else:
+                    print(f"Copied INDEX CSV without changes: {csv_path.name}");
+                df.to_csv(index_out_dir / csv_path.name, index=False);
+
+        else:
+            print(f"Validation elimination mode: NONE (VALIDATION_ELIMINATION={VALIDATION_ELIMINATION!r})");
 
         print("Finished task Validation");
 
@@ -498,7 +584,7 @@ class OCMeta(luigi.Task):
         config["triplestore_url"] = META_TRIPLESTORE_URL;
         config["provenance_triplestore_url"] = META_PROVENANCE_TRIPLESTORE_URL;
         config["provenance_endpoints"] = "[]";
-        config["input_csv_dir"] = TEMP_DIR + "/meta-preprocessed";
+        config["input_csv_dir"] = TEMP_DIR + "/meta-validated";
         config["base_output_dir"] = META_OUTPUT_DIR;
         config["resp_agent"] = META_RESP_AGENT;
         config["virtuoso_full_text_search"] = "True";
@@ -580,7 +666,7 @@ class OCMetaCsv(luigi.Task):
     def run(self):
         print("Running task OCMetaCsv");
         
-        print("placeholder - call oc_meta_csv to construct meta.csv with data from META");
+        #TODO: host redis here
         
         cmd = ["python", OC_META_CSV, "--config", META_CONFIG_PATH, "--output", META_OUTPUT_DIR + "/csv", "--redis-host", META_REDIS_HOST, "--redis-port", META_REDIS_PORT, "--redis-db", META_REDIS_DB];
         run(cmd);
@@ -682,7 +768,7 @@ class Publication(luigi.Task):
     def output(self):
         return luigi.LocalTarget("abcabc-%s.txt" % self.param)
 
-class DatabaseSwitchOff(luigi.Task):
+class CleanUp(luigi.Task):
     param = luigi.Parameter(default = 42);
 
     def requires(self):
@@ -692,12 +778,14 @@ class DatabaseSwitchOff(luigi.Task):
         print("Running task DatabaseSwitchOff");
         
         # turning blazegraph off
-        docker_rm(BLAZEGRAPH_CONTAINER);
+        #docker_rm(BLAZEGRAPH_CONTAINER);
         #TODO - turn off virtuoso
-        print("Placeholder - turn off Virtuoso here");
         docker_rm(PROV_VIRTUOSO_NAME);
         #TODO - turn off QLEVER or whatever is used for index
         print("Placeholder - turn off QLEVER here");
+
+        # delete TEMP_DIR
+        shutil.rmtree(TEMP_DIR);
 
         print("Finished task DatabaseSwitchOff");
 
@@ -713,7 +801,7 @@ if __name__ == "__main__":
     task_ocindex = OCIndex();
     task_upload = Upload();
     task_publication = Publication();
-    task_dbswitchoff = DatabaseSwitchOff();
+    task_cleanup = CleanUp();
 
     start = time.time();
     print("");
@@ -727,6 +815,6 @@ if __name__ == "__main__":
     #task_ocindex.run();
     #task_upload.run();
     #task_publication.run();
-    #task_dbswitchoff.run();
+    task_cleanup.run();
     end = time.time();
     print("Total runtime: " + str(end-start) + "s");
