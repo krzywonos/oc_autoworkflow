@@ -1,0 +1,88 @@
+# directories
+input_dir: "dir/input"
+temp_dir: "dir/temp"
+output_dir: "dir/output"
+preprocess_dir: "../oc_meta/oc_meta/run/meta/preprocess_input.py"
+oc_validator_dir: "../oc_validator/oc_validator/main.py"
+oc_virtuoso_utilities_dir: "../virtuoso_utilities/virtuoso_utilities"
+oc_meta_dir: "../oc_meta/oc_meta/run/meta_process.py"
+oc_meta_dir_error: "../oc_meta/oc_meta/run/upload/on_triplestore.py"
+oc_meta_val_dir: "../oc_meta/oc_meta/run/meta/check_results.py"
+oc_meta_csv: "../oc_meta/oc_meta/run/csv_generator_lite.py"
+meta2redis_dir: "../index/scripts/ocworkflow.py/populate_redis()"
+oc_index_dir: "../index/scripts/ocworkflow.py/gen_zipbatch()"
+upload_dir: ""
+publication_dir: ""
+
+# docker image and container information
+fuseki_image: "stain/jena-fuseki"
+redis_image: "redis:7-alpine"
+blazegraph_image: "lyrasis/blazegraph:2.1.5"
+redis_container: "my-redis"
+fuseki_container: "my-fuseki"
+blazegraph_container: "my-blazegraph"
+
+# preprocess_input
+preprocess_storage_type: "sparql" # can be "redis" or "sparql"
+preprocess_redis_port: "6379"
+preprocess_redis_db_number: "10"
+preprocess_sparql_endpoint: "localhost:3030/ds/sparql"
+
+# validation
+validation_type: "2" # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
+validation_elimination: "line" # line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
+
+# SPARQL database for META
+meta_config_path: "dir/temp/meta_config.yaml" # directory where the meta_config.yaml will be generated
+meta_triplestore_url: "http://127.0.0.1:8888" # Endpoint URL to load the output RDF
+meta_provenance_triplestore_url: "http://127.0.0.1:8888" #TODO this should always be virtuoso no?
+meta_base_iri: "https://w3id.org/oc/meta/" # The base URI of entities on Meta. This setting can be safely left as is
+meta_context_path: "https://w3id.org/oc/corpus/context.json" # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
+meta_resp_agent: "https://w3id.org/oc/meta/prov/pa/1" # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
+meta_source: "https://api.crossref.org/" # Data source URL. This setting can be safely left as is
+meta_cache_endpoint: ""
+meta_cache_update_endpoint: ""
+meta_graphdb_connector_name: ""
+meta_output_dir: output_dir + "/meta" #
+meta_redis_host: "localhost" # default = "localhost"
+meta_redis_port: "6379" # default = "6379"
+meta_redis_db: "0" # default = "0"
+meta_redis_cache_db: 1 #default = 1
+meta_supplier_prefix: "060" # A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
+meta_rdf_output_in_chunks: 0 # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
+meta_workers_number: 16 # Number of cores to devote to the Meta process
+meta_dir_split_number: 10000 # Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
+meta_items_per_file: 1000 # Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
+meta_default_dir: "_" # This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
+meta_generate_rdf_files: 0 # If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
+meta_zip_output_rdf: 1 # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
+meta_output_rdf_dir: meta_output_dir + "/rdf" # Folder where RDF files are saved. Since these files are the heaviest, it is sometimes convenient to save them on HDD, while the triplestore needs to be on SSD for its efficient operation
+meta_silencer: '["author", "editor", "publisher"]' # Fields in the silencer list are only updated if there is no information on that field in OpenCitations Meta. For example, if 'author' is specified, any new authors are not added to the list if authors are already present.
+meta_normalize_titles: 1 # default = 1
+meta_use_doi_api_services: 0 # If True, use the DOI API service to check if DOIs are valid
+
+
+# QLEVER for INDEX
+
+# Virtuoso for PROV
+prov_virtuoso_bulk_load: 0 # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
+prov_virtuoso_bulk_load_dir: "dir/input/virtuoso" # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO
+prov_virtuoso_dump: 0 #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
+prov_virtuoso_dump_dir: "dir/output/n-quads-dump" # directory for n-quad dump containing PROV from Virtuoso 
+prov_virtuoso_dump_file_limit: 100000000 #maximum length of dump files in bytes
+prov_virtuoso_dump_compression: 1 # default: 1. set to 0 to disable gzip compression
+prov_virtuoso_custom: 1 # default: 1. set to 0 to disable customised usage. 
+prov_virtuoso_name: "virtuoso" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_http_port: "8888" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_isql_port: "1111" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_data_dir: "" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_dba_username: "dba" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_dba_password: "dba" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_mount_volume: "" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_network: "" # please consult virtuoso_utilities' README.md for usage and default values
+prov_virtuoso_memory: "16g" # defaults to 2/3 of host memory with psutil installed, otherwise 2g. 
+prov_virtuoso_detach: 1 # default: 1. Run container in detached mode.
+prov_virtuoso_wait_ready: 1 # default: 1. Wait until Virtuoso is ready to accept connections.
+prov_virtuoso_enable_write_permissions: 1 # default: 1. Makes database publicly writable.
+prov_virtuoso_force_remove: 1
+
