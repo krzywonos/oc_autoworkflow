@@ -1,3 +1,4 @@
+# imports
 import luigi;
 import time;
 import subprocess;
@@ -15,96 +16,85 @@ from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
 
+# declaration of variables loaded from config.yaml
+input_dir = None;
+temp_dir = None;
+output_dir = None;
+preprocess_dir = None;
+oc_validator_dir = None;
+oc_virtuoso_utilities_dir = None;
+oc_meta_dir = None;
+oc_meta_dir_error = None;
+oc_meta_val_dir = None;
+oc_meta_csv_dir = None;
+meta2redis_dir = None;
+oc_index_dir = None;
+upload_dir = None;
+publication_dir = None;
+fuseki_image = None;
+redis_image = None;
+blazegraph_image = None;
+redis_container = None;
+fuseki_container = None;
+blazegraph_container = None;
+preprocess_storage_type = None;
+preprocess_redis_port = None;
+preprocess_redis_db_number = None;
+preprocess_sparql_endpoint = None;
+validation_type = None;
+validation_elimination = None;
+meta_config_path = None;
+meta_triplestore_url = None;
+meta_provenance_triplestore_url = None;
+meta_base_iri = None;
+meta_context_path = None;
+meta_resp_agent = None;
+meta_source = None;
+meta_cache_endpoint = None;
+meta_cache_update_endpoint = None;
+meta_graphdb_connector_name = None;
+meta_output_dir = None;
+meta_redis_host = None;
+meta_redis_port = None;
+meta_redis_db = None;
+meta_redis_cache_db = None;
+meta_supplier_prefix = None;
+meta_rdf_output_in_chunks = None;
+meta_workers_number = None;
+meta_dir_split_number = None;
+meta_items_per_file = None;
+meta_default_dir = None;
+meta_generate_rdf_files = None;
+meta_zip_output_rdf = None;
+meta_output_rdf_dir = None;
+meta_silencer = None;
+meta_normalize_titles = None;
+meta_use_doi_api_services = None;
+prov_virtuoso_bulk_load = None;
+prov_virtuoso_bulk_load_dir = None;
+prov_virtuoso_dump = None;
+prov_virtuoso_dump_dir = None;
+prov_virtuoso_dump_file_limit = None;
+prov_virtuoso_dump_compression = None;
+prov_virtuoso_custom = None;
+prov_virtuoso_name = None;
+prov_virtuoso_http_port = None;
+prov_virtuoso_isql_port = None;
+prov_virtuoso_data_dir = None;
+prov_virtuoso_dba_username = None;
+prov_virtuoso_dba_password = None;
+prov_virtuoso_mount_volume = None;
+prov_virtuoso_network = None;
+prov_virtuoso_memory = None;
+prov_virtuoso_detach = None;
+prov_virtuoso_wait_ready = None;
+prov_virtuoso_enable_write_permissions = None;
+prov_virtuoso_force_remove = None;
 
-INPUT_DIR = "dir/input";
-TEMP_DIR = "dir/temp";
-OUTPUT_DIR = "dir/output";
-PREPROCESS_DIR = "../oc_meta/oc_meta/run/meta/preprocess_input.py";
-OC_VALIDATOR_DIR = "../oc_validator/oc_validator/main.py";
-OC_VIRTUOSO_UTILITIES_DIR = "../virtuoso_utilities/virtuoso_utilities";
-OC_META_DIR = "../oc_meta/oc_meta/run/meta_process.py";
-OC_META_DIR_ERROR = "../oc_meta/oc_meta/run/upload/on_triplestore.py";
-OC_META_VAL_DIR = "../oc_meta/oc_meta/run/meta/check_results.py";
-OC_META_CSV = "../oc_meta/oc_meta/run/csv_generator_lite.py";
-META2REDIS_DIR = "../index/scripts/ocworkflow.py/populate_redis()";
-OC_INDEX_DIR = "../index/scripts/ocworkflow.py/gen_zipbatch()";
-UPLOAD_DIR = "";
-PUBLICATION_DIR = "";
-
-FUSEKI_IMAGE = "stain/jena-fuseki";
-REDIS_IMAGE = "redis:7-alpine";
-BLAZEGRAPH_IMAGE = "lyrasis/blazegraph:2.1.5";
-REDIS_CONTAINER = "my-redis";
-FUSEKI_CONTAINER = "my-fuseki";
-BLAZEGRAPH_CONTAINER = "my-blazegraph";
-
-# preprocess_input default values
-PREPROCESS_STORAGE_TYPE = "sparql"; # can be "redis" or "sparql"
-PREPROCESS_REDIS_PORT = "6379;"
-PREPROCESS_REDIS_DB_NUMBER = "10";
-PREPROCESS_SPARQL_ENDPOINT = "localhost:3030/ds/sparql";
-
-# validation values
-VALIDATION_TYPE = "2"; # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
-VALIDATION_ELIMINATION = "line"; # line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
-
-# values for SPARQL database for META
-META_CONFIG_PATH = "dir/temp/meta_config.yaml"; # directory where the meta_config.yaml will be generated
-META_TRIPLESTORE_URL = "http://127.0.0.1:8888"; # Endpoint URL to load the output RDF
-META_PROVENANCE_TRIPLESTORE_URL = "http://127.0.0.1:8888"; #TODO this should always be virtuoso no?
-META_BASE_IRI = "https://w3id.org/oc/meta/"; # The base URI of entities on Meta. This setting can be safely left as is
-META_CONTEXT_PATH = "https://w3id.org/oc/corpus/context.json"; # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
-META_RESP_AGENT = "https://w3id.org/oc/meta/prov/pa/1"; # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
-META_SOURCE = "https://api.crossref.org/"; # Data source URL. This setting can be safely left as is
-META_CACHE_ENDPOINT = "";
-META_CACHE_UPDATE_ENDPOINT = "";
-META_GRAPHDB_CONNECTOR_NAME = "";
-META_OUTPUT_DIR = OUTPUT_DIR + "/meta"; #
-META_REDIS_HOST = "localhost"; #
-META_REDIS_PORT = "6379"; #
-META_REDIS_DB = "0"; #
-META_REDIS_CACHE_DB = 1; #
-META_SUPPLIER_PREFIX = "060"; # A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
-META_RDF_OUTPUT_IN_CHUNKS = 0; # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
-META_WORKERS_NUMBER = 16; # Number of cores to devote to the Meta process
-META_DIR_SPLIT_NUMBER = 10000; # Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
-META_ITEMS_PER_FILE = 1000; # Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
-META_DEFAULT_DIR = "_"; # This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
-META_GENERATE_RDF_FILES = 0; # If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
-META_ZIP_OUTPUT_RDF = 1; # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
-META_OUTPUT_RDF_DIR = META_OUTPUT_DIR + "/rdf"; # Folder where RDF files are saved. Since these files are the heaviest, it is sometimes convenient to save them on HDD, while the triplestore needs to be on SSD for its efficient operation
-META_SILENCER = '["author", "editor", "publisher"]'; # Fields in the silencer list are only updated if there is no information on that field in OpenCitations Meta. For example, if 'author' is specified, any new authors are not added to the list if authors are already present.
-META_NORMALIZE_TITLES = 1; #
-META_USE_DOI_API_SERVICE = 0; # If True, use the DOI API service to check if DOIs are valid
-
-# values for QLEVER database in Docker for INDEX
-
-
-# values for Virtuoso in Docker for PROV
-PROV_VIRTUOSO_BULK_LOAD = 0; # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
-PROV_VIRTUOSO_BULK_LOAD_DIR = "dir/input/virtuoso"; # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO
-PROV_VIRTUOSO_DUMP = 0; #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
-PROV_VIRTUOSO_DUMP_DIR = "dir/output/n-quads-dump"; # directory for n-quad dump containing PROV from Virtuoso 
-PROV_VIRTUOSO_DUMP_FILE_LIMIT = 100000000; #maximum length of dump files in bytes
-PROV_VIRTUOSO_DUMP_COMPRESSION = 1; # default: 1. set to 0 to disable gzip compression
-PROV_VIRTUOSO_CUSTOM = 1; # default: 1. set to 0 to disable customised usage. 
-PROV_VIRTUOSO_NAME = "virtuoso"; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_HTTP_PORT = "8888"; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_ISQL_PORT = "1111"; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_DATA_DIR = ""; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_DBA_USERNAME = "dba"; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_DBA_PASSWORD = "dba"; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_MOUNT_VOLUME = ""; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_NETWORK = ""; # please consult virtuoso_utilities' README.md for usage and default values
-PROV_VIRTUOSO_MEMORY = "16g"; # defaults to 2/3 of host memory with psutil installed, otherwise 2g. 
-PROV_VIRTUOSO_DETACH = 1; # default: 1. Run container in detached mode.
-PROV_VIRTUOSO_WAIT_READY = 1; # default: 1. Wait until Virtuoso is ready to accept connections.
-PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS = 1; # default: 1. Makes database publicly writable.
-PROV_VIRTUOSO_FORCE_REMOVE = 1;
-
-# helpers
-
+# helper functions
 def wait_for_port(host: str, port: int, timeout: int = 60):
+    # waits for opening the specified port
+    timeout = 60;
     deadline = time.time() + timeout;
     last_error = None;
     while time.time() < deadline:
@@ -117,53 +107,110 @@ def wait_for_port(host: str, port: int, timeout: int = 60):
     raise TimeoutError(f"Port {host}:{port} not ready after {timeout}s; last error: {last_error}");
 
 def run(cmd: list[str], **kwargs):
+    # run a command in terminal
     print("$", " ".join(cmd));
     return subprocess.run(cmd, check=True, **kwargs);
 
 def docker_rm(container: str):
+    # turn off container with the specified name in docker
     try:
         run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
     except subprocess.CalledProcessError:
-        pass;  # already gone
-
-def virtuoso_rebuild_index():
-    cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/rebuild_fulltext_index.py"];
-    if PROV_VIRTUOSO_DBA_PASSWORD != "":
-        cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
-    else:
-        cmd.append("dba");
-    if PROV_VIRTUOSO_CUSTOM == 1:
-        cmd.append("--port");
-        cmd.append(PROV_VIRTUOSO_ISQL_PORT);
-        cmd.append("--user");
-        cmd.append(PROV_VIRTUOSO_DBA_USERNAME);
-    cmd.append("--docker-container");
-    cmd.append(PROV_VIRTUOSO_NAME);
-    run(cmd);
+        pass;
 
 # luigi tasks
+
+class LoadConfig(luigi.Task):
+    param = luigi.Parameter(default = 42);
+
+    def run(self):
+        # path to YAML
+        CONFIG_PATH = Path("config.yaml");
+
+        # load
+        cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {};
+
+        errors = [];
+
+        def _expect_in(name, allowed=None, cast=None, transform=None):
+            val = cfg.get(name, None);
+            if val is None:
+                errors.append(f"{name}: missing");
+                return None;
+            if cast:
+                try:
+                    val = cast(val);
+                except Exception:
+                    errors.append(f"{name}: invalid type/value {val!r} (expected {cast.__name__})");
+                    return None;
+            if transform:
+                val = transform(val);
+            if allowed and val not in allowed:
+                errors.append(f"{name}: {val!r} not in {sorted(allowed)}");
+            cfg[name] = val;
+            return val;
+
+        validation_type = _expect_in("validation_type", allowed = {0, 1, 2}, cast = int);
+        validation_elimination = _expect_in("validation_elimination", allowed = {"file", "line"}, transform=lambda s: str(s).lower());
+        
+        meta_rdf_output_in_chunks = _expect_in("meta_rdf_output_in_chunks", allowed = {0, 1}, cast = int);
+        meta_workers_number = _expect_in("meta_workers_number", cast = int);
+        meta_dir_split_number = _expect_in("meta_dir_split_number", cast = int);
+        meta_items_per_file = _expect_in("meta_items_per_file", cast = int);
+        meta_generate_rdf_files = _expect_in("meta_generate_rdf_files", allowed = {0, 1}, cast = int);
+        meta_zip_output_rdf = _expect_in("meta_zip_output_rdf", allowed = {0, 1}, cast = int);
+        meta_normalize_titles = _expect_in("meta_normalize_titles", allowed = {0, 1}, cast = int);
+        meta_use_doi_api_services = _expect_in("meta_use_doi_api_services", allowed = {0, 1}, cast = int);
+
+        prov_virtuoso_bulk_load = _expect_in("prov_virtuoso_bulk_load", allowed = {0, 1}, cast = int);
+        prov_virtuoso_dump = _expect_in("prov_virtuoso_dump", allowed = {0, 1}, cast = int);
+        prov_virtuoso_dump_file_limit = _expect_in("prov_virtuoso_dump_file_limit", cast = str);
+        prov_virtuoso_dump_compression = _expect_in("prov_virtuoso_dump_compression", allowed = {0, 1}, cast = int);
+        prov_virtuoso_custom = _expect_in("prov_virtuoso_custom", allowed = {0, 1}, cast = int);
+        prov_virtuoso_detach = _expect_in("prov_virtuoso_detach", allowed = {0, 1}, cast = int);
+        prov_virtuoso_wait_ready = _expect_in("prov_virtuoso_wait_ready", allowed = {0, 1}, cast = int);
+        prov_virtuoso_enable_write_permissions = _expect_in("prov_virtuoso_enable_write_permissions", allowed = {0, 1}, cast = int);
+        prov_virtuoso_force_remove = _expect_in("prov_virtuoso_force_remove", allowed = {0, 1}, cast = int);
+
+        # raise combined error if any
+        if errors:
+            raise ValueError("\n".join(errors));
+
+        # assign all keys from YAML to same-named variables (module scope)
+        # (safe because we validated critical ones above)
+        for _k, _v in cfg.items():
+            globals()[_k] = _v;
+
+        # show a quick summary
+        print("Loaded config keys:", ", ".join(sorted(cfg.keys())));
+
+    def output(self):
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param);
 
 class Preprocess(luigi.Task):
     param = luigi.Parameter(default = 42);
 
+    def requires(self):
+        return LoadConfig(self.param);
+
     def run(self):
 
         print("Running task Preprocess");
-        print("Placeholder - call preprocess with all files in INPUT_DIR and store output in TEMP_DIR");
+        print("Placeholder - call preprocess with all files in input_dir and store output in temp_dir");
 
-        if(PREPROCESS_STORAGE_TYPE == "sparql"):
+        if(preprocess_storage_type == "sparql"):
             try:
-                u = urlparse(PREPROCESS_SPARQL_ENDPOINT);
+                u = urlparse(preprocess_sparql_endpoint);
                 host = u.hostname or "localhost";
                 port = u.port or (443 if u.scheme == "https" else 80);
 
                 parts = [p for p in (u.path or "").split("/") if p];
                 if not parts:
-                    raise ValueError(f"Cannot determine dataset from endpoint path: {PREPROCESS_SPARQL_ENDPOINT}");
+                    raise ValueError(f"Cannot determine dataset from endpoint path: {preprocess_sparql_endpoint}");
                 
                 if parts[-1].lower() in ("sparql", "query"):
                     if len(parts) < 2:
-                        raise ValueError(f"Endpoint path too short to infer dataset: {PREPROCESS_SPARQL_ENDPOINT}");
+                        raise ValueError(f"Endpoint path too short to infer dataset: {preprocess_sparql_endpoint}");
                     dataset = parts[-2];
                 else:
                     dataset = parts[-1];
@@ -171,43 +218,43 @@ class Preprocess(luigi.Task):
                 if host not in ("localhost", "127.0.0.1"): 
                     print(f"Endpoint host is '{host}'. This script exposes Fuseki on the local machine; \n please access it via http://localhost:{port}/{dataset}/sparql");
 
-                docker_rm(FUSEKI_CONTAINER);
-                run(["docker", "run", "-d", "--name", FUSEKI_CONTAINER, "-p", f"{port}:3030", FUSEKI_IMAGE, "--mem", f"/{dataset}"]);
+                docker_rm(fuseki_container);
+                run(["docker", "run", "-d", "--name", fuseki_container, "-p", f"{port}:3030", fuseki_image, "--mem", f"/{dataset}"]);
                 wait_for_port("localhost", port);
-                print(f"Fuseki ready at http://localhost:{port}/{dataset}/sparql (requested: {PREPROCESS_SPARQL_ENDPOINT})");
+                print(f"Fuseki ready at http://localhost:{port}/{dataset}/sparql (requested: {preprocess_sparql_endpoint})");
 
-                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", PREPROCESS_SPARQL_ENDPOINT];
+                cmd = ["python", preprocess_dir, input_dir + "/meta", temp_dir + "/meta-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", preprocess_sparql_endpoint];
                 run(cmd);
                 print("Input for meta preprocessed");
-                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", PREPROCESS_SPARQL_ENDPOINT];
+                cmd = ["python", preprocess_dir, input_dir + "/index", temp_dir + "/index-preprocessed", "--storage-type", "sparql", "--sparql-endpoint", preprocess_sparql_endpoint];
                 run(cmd);
                 print("Input for index preprocessed.");
             finally:
-                docker_rm(FUSEKI_CONTAINER);
+                docker_rm(fuseki_container);
         
-        elif(PREPROCESS_STORAGE_TYPE == "redis"):
+        elif(preprocess_storage_type == "redis"):
             try:
-                docker_rm(REDIS_CONTAINER);
-                run(["docker", "run", "-d", "--name", REDIS_CONTAINER, "-p", f"{PREPROCESS_REDIS_PORT}:6379", REDIS_IMAGE]);
-                wait_for_port("localhost", PREPROCESS_REDIS_PORT);
-                print(f"Redis ready at redis://localhost:{PREPROCESS_REDIS_PORT}");
+                docker_rm(redis_container);
+                run(["docker", "run", "-d", "--name", redis_container, "-p", f"{preprocess_redis_port}:6379", redis_image]);
+                wait_for_port("localhost", preprocess_redis_port);
+                print(f"Redis ready at redis://localhost:{preprocess_redis_port}");
 
-                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/meta", TEMP_DIR + "/meta-preprocessed", "--storage-type", "redis", "--redis-db", PREPROCESS_REDIS_DB_NUMBER];
+                cmd = ["python", preprocess_dir, input_dir + "/meta", temp_dir + "/meta-preprocessed", "--storage-type", "redis", "--redis-db", preprocess_redis_db_number];
                 run(cmd);
                 print("Input for meta preprocessed");
-                cmd = ["python", PREPROCESS_DIR, INPUT_DIR + "/index", TEMP_DIR + "/index-preprocessed", "--storage-type", "redis", "--redis-db", PREPROCESS_REDIS_DB_NUMBER];
+                cmd = ["python", preprocess_dir, input_dir + "/index", temp_dir + "/index-preprocessed", "--storage-type", "redis", "--redis-db", preprocess_redis_db_number];
                 run(cmd);
                 print("Input for index preprocessed.");
             finally:
-                docker_rm(REDIS_CONTAINER);
+                docker_rm(redis_container);
         
         else:
-            print("Incorrect value for PREPROCESS_STORAGE_TYPE");
+            print("Incorrect value for preprocess_storage_type");
 
         print("Finished task Preprocess");
 
     def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
+        return luigi.LocalTarget("abcabc-%s.txt" % self.param);
     
 class Validation(luigi.Task):
     param = luigi.Parameter(default = 42);
@@ -234,8 +281,8 @@ class Validation(luigi.Task):
 
         # validation of meta
         meta_in = Path("dir/temp/meta-preprocessed");
-        meta_val_dir = Path(TEMP_DIR) / "meta-validated" / "validation";
-        meta_out_dir = Path(TEMP_DIR) / "meta-validated";
+        meta_val_dir = Path(temp_dir) / "meta-validated" / "validation";
+        meta_out_dir = Path(temp_dir) / "meta-validated";
         meta_val_dir.mkdir(parents=True, exist_ok=True);
         meta_map = {};
 
@@ -248,14 +295,14 @@ class Validation(luigi.Task):
             before = set(sorted(meta_val_dir.glob("out_validate_meta*.json")));
 
             # run validator
-            if VALIDATION_TYPE == "0":
+            if validation_type == 0:
                 v = Validator(str(file), str(meta_val_dir));
-            elif VALIDATION_TYPE == "1":
+            elif validation_type == 1:
                 v = Validator(str(file), str(meta_val_dir), use_meta_endpoint=True);
-            elif VALIDATION_TYPE == "2":
+            elif validation_type == 2:
                 v = Validator(str(file), str(meta_val_dir), verify_id_existence=False);
             else:
-                raise ValueError(f"Unknown VALIDATION_TYPE={VALIDATION_TYPE}");
+                raise ValueError(f"Unknown validation_type={validation_type}");
             v.validate();
 
             time.sleep(0.05);
@@ -291,8 +338,8 @@ class Validation(luigi.Task):
 
         # validation of index
         index_in = Path("dir/temp/index-preprocessed");
-        index_val_dir = Path(TEMP_DIR) / "index-validated" / "validation";
-        index_out_dir = Path(TEMP_DIR) / "index-validated";
+        index_val_dir = Path(temp_dir) / "index-validated" / "validation";
+        index_out_dir = Path(temp_dir) / "index-validated";
         index_val_dir.mkdir(parents=True, exist_ok=True);
         index_map = {};
 
@@ -303,14 +350,14 @@ class Validation(luigi.Task):
 
             before = set(sorted(index_val_dir.glob("out_validate_cits*.json")));
 
-            if VALIDATION_TYPE == "0":
+            if validation_type == 0:
                 v = Validator(str(file), str(index_val_dir));
-            elif VALIDATION_TYPE == "1":
+            elif validation_type == 1:
                 v = Validator(str(file), str(index_val_dir), use_meta_endpoint=True);
-            elif VALIDATION_TYPE == "2":
+            elif validation_type == 2:
                 v = Validator(str(file), str(index_val_dir), verify_id_existence=False);
             else:
-                raise ValueError(f"Unknown VALIDATION_TYPE={VALIDATION_TYPE}");
+                raise ValueError(f"Unknown validation_type={validation_type}");
             v.validate();
 
             time.sleep(0.05);
@@ -344,7 +391,7 @@ class Validation(luigi.Task):
                 f"JSON: {json_path.name if json_path else '??'}, bad rows: {len(bad_rows)}");
 
         # elimination of incorrect entries
-        if VALIDATION_ELIMINATION == "file":
+        if validation_elimination == "file":
             print("Validation elimination mode: FILE");
 
             # META
@@ -365,7 +412,7 @@ class Validation(luigi.Task):
                     shutil.copyfile(csv_path, index_out_dir / csv_path.name);
                     print(f"Copied INDEX file: {csv_path.name}");
 
-        elif VALIDATION_ELIMINATION == "line":
+        elif validation_elimination == "line":
             print("Validation elimination mode: LINE");
 
             # META
@@ -391,7 +438,7 @@ class Validation(luigi.Task):
                 df.to_csv(index_out_dir / csv_path.name, index=False);
 
         else:
-            print(f"Validation elimination mode: NONE (VALIDATION_ELIMINATION={VALIDATION_ELIMINATION!r})");
+            print(f"Validation elimination mode: NONE (validation_elimination={validation_elimination!r})");
 
         print("Finished task Validation");
 
@@ -408,17 +455,17 @@ class DatabaseSwitchOn(luigi.Task):
         print("Running task DatabaseSwitchOn");
         
         # # triplestore for META (ask Arcangelo which one)
-        # u = urlparse(META_TRIPLESTORE_URL);
+        # u = urlparse(meta_triplestore_url);
         # host = u.hostname or "127.0.0.1";
         # port = u.port or (443 if u.scheme == "https" else 80);
 
-        # docker_rm(BLAZEGRAPH_CONTAINER);
+        # docker_rm(blazegraph_container);
 
         # run([
         #     "docker", "run", "-d",
-        #     "--name", BLAZEGRAPH_CONTAINER,
+        #     "--name", blazegraph_container,
         #     "-p", f"{port}:8080",
-        #     BLAZEGRAPH_IMAGE
+        #     blazegraph_image
         # ]);
 
         # wait_for_port(host, port);
@@ -426,12 +473,12 @@ class DatabaseSwitchOn(luigi.Task):
         # # 1
         # NAMESPACE = "kb"
 
-        # meta = urlparse(META_TRIPLESTORE_URL)
+        # meta = urlparse(meta_triplestore_url)
         # base_root = f"{meta.scheme}://{host}:{port}"
 
-        # if "/bigdata" in META_TRIPLESTORE_URL:
+        # if "/bigdata" in meta_triplestore_url:
         #     base_path = "/bigdata"
-        # elif "/blazegraph" in META_TRIPLESTORE_URL:
+        # elif "/blazegraph" in meta_triplestore_url:
         #     base_path = "/blazegraph"
         # else:
         #     base_path = "/bigdata"
@@ -503,65 +550,79 @@ class DatabaseSwitchOn(luigi.Task):
 
 
         # Virtuoso in Docker for PROV
-        cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/launch_virtuoso.py"];
-        if PROV_VIRTUOSO_CUSTOM == 1:
-            if PROV_VIRTUOSO_NAME != "":
+        cmd = ["python", oc_virtuoso_utilities_dir + "/launch_virtuoso.py"];
+        if prov_virtuoso_custom == 1:
+            if prov_virtuoso_name != "":
                 cmd.append("--name");
-                cmd.append(PROV_VIRTUOSO_NAME);
-            if PROV_VIRTUOSO_HTTP_PORT != "":
+                cmd.append(prov_virtuoso_name);
+            if prov_virtuoso_http_port != "":
                 cmd.append("--http-port");
-                cmd.append(PROV_VIRTUOSO_HTTP_PORT);
-            if PROV_VIRTUOSO_ISQL_PORT != "":
+                cmd.append(prov_virtuoso_http_port);
+            if prov_virtuoso_isql_port != "":
                 cmd.append("--isql-port");
-                cmd.append(PROV_VIRTUOSO_ISQL_PORT);
-            if PROV_VIRTUOSO_DATA_DIR != "":
+                cmd.append(prov_virtuoso_isql_port);
+            if prov_virtuoso_data_dir != "":
                 cmd.append("--data-dir");
-                cmd.append(PROV_VIRTUOSO_DATA_DIR);
-            if PROV_VIRTUOSO_DBA_PASSWORD != "":
+                cmd.append(prov_virtuoso_data_dir);
+            if prov_virtuoso_dba_password != "":
                 cmd.append("--dba-password");
-                cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
-            if PROV_VIRTUOSO_MOUNT_VOLUME != "":
-                cmd.append("--mount-volume");
-                cmd.append(PROV_VIRTUOSO_MOUNT_VOLUME);
-            if PROV_VIRTUOSO_NETWORK != "":
+                cmd.append(prov_virtuoso_dba_password);
+            if prov_virtuoso_mount_volume.strip():
+                for word in prov_virtuoso_mount_volume.split():
+                    cmd.append("--mount-volume")
+                    cmd.append(word)                
+            if prov_virtuoso_network != "":
                 cmd.append("--network");
-                cmd.append(PROV_VIRTUOSO_NETWORK);
-            if PROV_VIRTUOSO_MEMORY != "":
+                cmd.append(prov_virtuoso_network);
+            if prov_virtuoso_memory != "":
                 cmd.append("--memory");
-                cmd.append(PROV_VIRTUOSO_MEMORY);
-            if PROV_VIRTUOSO_DETACH == 1:
+                cmd.append(prov_virtuoso_memory);
+            if prov_virtuoso_detach == 1:
                 cmd.append("--detach");
-            if PROV_VIRTUOSO_WAIT_READY == 1:
+            if prov_virtuoso_wait_ready == 1:
                 cmd.append("--wait-ready");
-            if PROV_VIRTUOSO_ENABLE_WRITE_PERMISSIONS == 1:
+            if prov_virtuoso_enable_write_permissions == 1:
                 cmd.append("--enable-write-permissions");
-            if PROV_VIRTUOSO_FORCE_REMOVE == 1:
+            if prov_virtuoso_force_remove == 1:
                 cmd.append("--force-remove");
-        cmd.append("--mount-volume");
-        cmd.append(PROV_VIRTUOSO_DUMP_DIR);
+        run(cmd);
+
+        # virtuoso_utilities/rebuild_fulltext_index.py to rebuild Virtuoso text index
+        cmd = ["python", oc_virtuoso_utilities_dir + "/rebuild_fulltext_index.py"];
+        cmd.append("--password");
+        if prov_virtuoso_dba_password != "":
+            cmd.append(prov_virtuoso_dba_password);
+        else:
+            cmd.append("dba");
+        if prov_virtuoso_custom == 1:
+            cmd.append("--port");
+            cmd.append(prov_virtuoso_isql_port);
+            cmd.append("--user");
+            cmd.append(prov_virtuoso_dba_username);
+        cmd.append("--docker-container");
+        cmd.append(prov_virtuoso_name);
         run(cmd);
 
         # virtuoso_utilities/bulk_load.py n-quads to populate PROV if enabled
-        #TODO - ask Arcangelo regarding how to probide n-quads to Virtuoso correctly
-        if PROV_VIRTUOSO_BULK_LOAD:
-            cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/bulk_load.py"];
+        if prov_virtuoso_bulk_load and prov_virtuoso_custom:
+            cmd = ["python", oc_virtuoso_utilities_dir + "/bulk_load.py"];
             cmd.append("--data-directory");
-            cmd.append(PROV_VIRTUOSO_BULK_LOAD_DIR);
+            cmd.append(prov_virtuoso_bulk_load_dir);
             cmd.append("--password");
-            if PROV_VIRTUOSO_DBA_PASSWORD != "":
-                cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
+            if prov_virtuoso_dba_password != "":
+                cmd.append(prov_virtuoso_dba_password);
             else:
                 cmd.append("dba");
-            if PROV_VIRTUOSO_CUSTOM == 1:
-                if PROV_VIRTUOSO_NAME != "":
+            if prov_virtuoso_custom == 1:
+                if prov_virtuoso_name != "":
                     cmd.append("--docker-container");
-                    cmd.append(PROV_VIRTUOSO_NAME);
-                if PROV_VIRTUOSO_ISQL_PORT != "":
+                    cmd.append(prov_virtuoso_name);
+                if prov_virtuoso_isql_port != "":
                     cmd.append("--port");
-                    cmd.append(PROV_VIRTUOSO_ISQL_PORT);
-                if PROV_VIRTUOSO_DBA_USERNAME != "":
+                    cmd.append(prov_virtuoso_isql_port);
+                if prov_virtuoso_dba_username != "":
                     cmd.append("--user");
-                    cmd.append(PROV_VIRTUOSO_DBA_USERNAME);
+                    cmd.append(prov_virtuoso_dba_username);
             cmd.append("--recursive");
             run(cmd);
         
@@ -581,56 +642,57 @@ class OCMeta(luigi.Task):
         
         # create config in yaml based on the meta configuration values
         config = {}
-        config["triplestore_url"] = META_TRIPLESTORE_URL;
-        config["provenance_triplestore_url"] = META_PROVENANCE_TRIPLESTORE_URL;
+        config["triplestore_url"] = meta_triplestore_url;
+        config["provenance_triplestore_url"] = meta_provenance_triplestore_url;
         config["provenance_endpoints"] = "[]";
-        config["input_csv_dir"] = TEMP_DIR + "/meta-validated";
-        config["base_output_dir"] = META_OUTPUT_DIR;
-        config["resp_agent"] = META_RESP_AGENT;
+        config["input_csv_dir"] = temp_dir + "/meta-validated";
+        config["base_output_dir"] = meta_output_dir;
+        config["resp_agent"] = meta_resp_agent;
         config["virtuoso_full_text_search"] = "True";
         config["blazegraph_full_text_search"] = "False";
         config["fuseki_full_text_search"] = "False";
-        config["cache_endpoint"] = META_CACHE_ENDPOINT;
-        config["cache_update_endpoint"] = META_CACHE_UPDATE_ENDPOINT;
-        config["graphdb_connector_name"] = META_GRAPHDB_CONNECTOR_NAME;
+        config["cache_endpoint"] = meta_cache_endpoint;
+        config["cache_update_endpoint"] = meta_cache_update_endpoint;
+        config["graphdb_connector_name"] = meta_graphdb_connector_name;
 
-        config["output_rdf_dir"] = META_OUTPUT_RDF_DIR;
-        config["base_iri"] = META_BASE_IRI;
-        config["context_path"] = META_CONTEXT_PATH;
-        config["dir_split_number"] = META_DIR_SPLIT_NUMBER;
-        config["items_per_file"] = META_ITEMS_PER_FILE;
-        config["default_dir"] = META_DEFAULT_DIR;
-        config["supplier_prefix"] = "'" + META_SUPPLIER_PREFIX + "'";
-        if META_RDF_OUTPUT_IN_CHUNKS:
+        config["output_rdf_dir"] = meta_output_rdf_dir;
+        config["base_iri"] = meta_base_iri;
+        config["context_path"] = meta_context_path;
+        config["dir_split_number"] = meta_dir_split_number;
+        config["items_per_file"] = meta_items_per_file;
+        config["default_dir"] = meta_default_dir;
+        config["supplier_prefix"] = "'" + meta_supplier_prefix + "'";
+        if meta_rdf_output_in_chunks:
             config["rdf_output_in_chunks"] = "True";
         else:
             config["rdf_output_in_chunks"] = "False";
-        if META_ZIP_OUTPUT_RDF:
+        if meta_zip_output_rdf:
             config["zip_output_rdf"] = "True";
         else:  
             config["zip_output_rdf"] = "False";
-        config["source"] = META_SOURCE;
-        if META_USE_DOI_API_SERVICE:
+        config["source"] = meta_source;
+        if meta_use_doi_api_services:
             config["use_doi_api_service"] = "True";
         else:
             config["use_doi_api_service"] = "False";
-        config["workers_number"] = META_WORKERS_NUMBER;
-        config["silencer"] = META_SILENCER;
-        if META_GENERATE_RDF_FILES:
+        config["workers_number"] = meta_workers_number;
+        config["silencer"] = meta_silencer;
+        if meta_generate_rdf_files:
             config["generate_rdf_files"] = "True";
         else:
             config["generate_rdf_files"] = "False";
         
-        config_path = Path(META_CONFIG_PATH)
+        config_path = Path(meta_config_path)
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with config_path.open("w", encoding="utf-8") as f:
             yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
 
         try: # run oc_meta
-            cmd = ["python", OC_META_DIR, "-c", os.fspath(config_path)];
+            #cmd = ["python", oc_meta_dir, "-c", os.fspath(config_path)];
+            cmd = ["python", oc_meta_dir, "-c", os.fspath(Path("config.yaml"))];
             run(cmd);
         except subprocess.CalledProcessError: # call on_triplestore to upload triples in case of error
-            cmd = ["python", OC_META_DIR_ERROR, META_TRIPLESTORE_URL, os.fspath(META_OUTPUT_RDF_DIR)];
+            cmd = ["python", oc_meta_dir_error, meta_triplestore_url, os.fspath(meta_output_rdf_dir)];
             run(cmd);
         
         print("Finished task OCMeta");
@@ -648,8 +710,8 @@ class OCMetaVal(luigi.Task):
         print("Running task OCMetaVal");
         
         #validate new data in META nad PROV with oc_meta_val
-        # META_OUTPUT_DIR might need to be more specific here
-        cmd = ["python", OC_META_VAL_DIR, META_OUTPUT_DIR, META_CONFIG_PATH];
+        # meta_output_dir might need to be more specific here
+        cmd = ["python", oc_meta_val_dir, meta_output_dir, meta_config_path];
         run(cmd);
 
         print("Finished task OCMetaVal");
@@ -668,8 +730,10 @@ class OCMetaCsv(luigi.Task):
         
         #TODO: host redis here
         
-        cmd = ["python", OC_META_CSV, "--config", META_CONFIG_PATH, "--output", META_OUTPUT_DIR + "/csv", "--redis-host", META_REDIS_HOST, "--redis-port", META_REDIS_PORT, "--redis-db", META_REDIS_DB];
+        cmd = ["python", oc_meta_csv_dir, "--config", meta_config_path, "--output", meta_output_dir + "/csv", "--redis-host", meta_redis_host, "--redis-port", meta_redis_port, "--redis-db", meta_redis_db];
         run(cmd);
+
+        #TODO: turn off redis
 
         print("Finished task OCMetaCsv");
 
@@ -689,7 +753,7 @@ class Meta2Redis(luigi.Task):
         print("Placeholder - turn on in-RAM REDIS");
 
         print("Placeholder - call meta2redis to upload the data from constructed meta.csv to in-RAM REDIS");
-        cmd = ["python", META2REDIS_DIR, "--dump", META_OUTPUT_DIR + "csv"];
+        cmd = ["python", meta2redis_dir, "--dump", meta_output_dir + "csv"];
 
         print("Finished task Meta2Redis");
 
@@ -726,23 +790,25 @@ class Upload(luigi.Task):
         print("Placeholder - call upload to use raw data to update INDEX and PROV?");
         
         #virtuoso_utilities/dump_quadstore.py to get PROV dump
-        if PROV_VIRTUOSO_DUMP:
-            cmd = ["python", OC_VIRTUOSO_UTILITIES_DIR + "/dump_quadstore.py"];
+        if prov_virtuoso_dump and prov_virtuoso_custom:
+            cmd = ["python", oc_virtuoso_utilities_dir + "/dump_quadstore.py"];
             cmd.append("--password")
-            if PROV_VIRTUOSO_DBA_PASSWORD != "":
-                cmd.append(PROV_VIRTUOSO_DBA_PASSWORD);
+            if prov_virtuoso_dba_password != "":
+                cmd.append(prov_virtuoso_dba_password);
             else:
                 cmd.append("dba");
-            if PROV_VIRTUOSO_CUSTOM == 1:
+            cmd.append("--output-dir");
+            cmd.append(prov_virtuoso_dump_dir);
+            if prov_virtuoso_custom == 1:
                 cmd.append("--port");
-                cmd.append(PROV_VIRTUOSO_ISQL_PORT);
+                cmd.append(prov_virtuoso_isql_port);
                 cmd.append("--user");
-                cmd.append(PROV_VIRTUOSO_DBA_USERNAME);
+                cmd.append(prov_virtuoso_dba_username);
             cmd.append("--docker-container");
-            cmd.append(PROV_VIRTUOSO_NAME);
+            cmd.append(prov_virtuoso_name);
             cmd.append("--file-length-limit");
-            cmd.append(PROV_VIRTUOSO_DUMP_FILE_LIMIT);
-            if not PROV_VIRTUOSO_DUMP_COMPRESSION:
+            cmd.append(prov_virtuoso_dump_file_limit);
+            if not prov_virtuoso_dump_compression:
                 cmd.append("--no-compression");
             run(cmd);
 
@@ -778,19 +844,20 @@ class CleanUp(luigi.Task):
         print("Running task DatabaseSwitchOff");
         
         # turning blazegraph off
-        #docker_rm(BLAZEGRAPH_CONTAINER);
+        #docker_rm(blazegraph_container);
         #TODO - turn off virtuoso
-        docker_rm(PROV_VIRTUOSO_NAME);
+        docker_rm(prov_virtuoso_name);
         #TODO - turn off QLEVER or whatever is used for index
         print("Placeholder - turn off QLEVER here");
 
-        # delete TEMP_DIR
-        shutil.rmtree(TEMP_DIR);
+        # delete temp_dir
+        shutil.rmtree(temp_dir);
 
         print("Finished task DatabaseSwitchOff");
 
 if __name__ == "__main__":
 
+    task_loadconfig = LoadConfig();
     task_preprocess = Preprocess();
     task_validation = Validation();
     task_dbswitchon = DatabaseSwitchOn();
@@ -805,16 +872,17 @@ if __name__ == "__main__":
 
     start = time.time();
     print("");
-    task_preprocess.run();
-    task_validation.run();
-    #task_dbswitchon.run();
+    task_loadconfig.run();
+    #task_preprocess.run();
+    #task_validation.run();
+    task_dbswitchon.run();
     #task_ocmeta.run();
     #task_ocmetaval.run();
     #task_ocmetacsv.run();
     #task_meta2redis.run();
     #task_ocindex.run();
-    #task_upload.run();
+    task_upload.run();
     #task_publication.run();
-    task_cleanup.run();
+    #task_cleanup.run();
     end = time.time();
     print("Total runtime: " + str(end-start) + "s");
