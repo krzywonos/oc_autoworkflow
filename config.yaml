@@ -69,7 +69,7 @@ prov_virtuoso_custom: 1 # default: 1. set to 0 to disable customised usage.
 
 prov_virtuoso_bulk_load: 0 # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
 prov_virtuoso_bulk_load_dir: "/input" # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO BY ADDING TO dirsallowed IN virtuoso-data-virtuoso.ini!!!
-prov_virtuoso_dump: 1 #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
+prov_virtuoso_dump: 0 #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
 prov_virtuoso_dump_dir: "/output" # directory for n-quad dump containing PROV from Virtuoso
 prov_virtuoso_mount_volume: "dir\\input\\virtuoso:/input dir\\output\\n-quads-dump:/output" # please consult virtuoso_utilities' README.md for usage and default values
 

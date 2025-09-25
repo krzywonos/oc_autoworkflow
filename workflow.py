@@ -544,6 +544,12 @@ class DatabaseSwitchOn(luigi.Task):
         # print(r.text[:400])
         # r.raise_for_status()
 
+        # REDIS for META
+        docker_rm(redis_container);
+        run(["docker", "run", "-d", "--name", redis_container, "-p", f"{preprocess_redis_port}:6379", redis_image]);
+        wait_for_port("localhost", preprocess_redis_port);
+        print(f"Redis ready at redis://localhost:{preprocess_redis_port}");
+
 
         # QLEVER in Docker for INDEX???
 
@@ -641,55 +647,54 @@ class OCMeta(luigi.Task):
         print("Running task OCMeta");
         
         # create config in yaml based on the meta configuration values
-        config = {}
-        config["triplestore_url"] = meta_triplestore_url;
-        config["provenance_triplestore_url"] = meta_provenance_triplestore_url;
-        config["provenance_endpoints"] = "[]";
-        config["input_csv_dir"] = temp_dir + "/meta-validated";
-        config["base_output_dir"] = meta_output_dir;
-        config["resp_agent"] = meta_resp_agent;
-        config["virtuoso_full_text_search"] = "True";
-        config["blazegraph_full_text_search"] = "False";
-        config["fuseki_full_text_search"] = "False";
-        config["cache_endpoint"] = meta_cache_endpoint;
-        config["cache_update_endpoint"] = meta_cache_update_endpoint;
-        config["graphdb_connector_name"] = meta_graphdb_connector_name;
+        # config = {}
+        # config["triplestore_url"] = meta_triplestore_url;
+        # config["provenance_triplestore_url"] = meta_provenance_triplestore_url;
+        # config["provenance_endpoints"] = "[]";
+        # config["input_csv_dir"] = temp_dir + "/meta-validated";
+        # config["base_output_dir"] = meta_output_dir;
+        # config["resp_agent"] = meta_resp_agent;
+        # config["virtuoso_full_text_search"] = "True";
+        # config["blazegraph_full_text_search"] = "False";
+        # config["fuseki_full_text_search"] = "False";
+        # config["cache_endpoint"] = meta_cache_endpoint;
+        # config["cache_update_endpoint"] = meta_cache_update_endpoint;
+        # config["graphdb_connector_name"] = meta_graphdb_connector_name;
 
-        config["output_rdf_dir"] = meta_output_rdf_dir;
-        config["base_iri"] = meta_base_iri;
-        config["context_path"] = meta_context_path;
-        config["dir_split_number"] = meta_dir_split_number;
-        config["items_per_file"] = meta_items_per_file;
-        config["default_dir"] = meta_default_dir;
-        config["supplier_prefix"] = "'" + meta_supplier_prefix + "'";
-        if meta_rdf_output_in_chunks:
-            config["rdf_output_in_chunks"] = "True";
-        else:
-            config["rdf_output_in_chunks"] = "False";
-        if meta_zip_output_rdf:
-            config["zip_output_rdf"] = "True";
-        else:  
-            config["zip_output_rdf"] = "False";
-        config["source"] = meta_source;
-        if meta_use_doi_api_services:
-            config["use_doi_api_service"] = "True";
-        else:
-            config["use_doi_api_service"] = "False";
-        config["workers_number"] = meta_workers_number;
-        config["silencer"] = meta_silencer;
-        if meta_generate_rdf_files:
-            config["generate_rdf_files"] = "True";
-        else:
-            config["generate_rdf_files"] = "False";
+        # config["output_rdf_dir"] = meta_output_rdf_dir;
+        # config["base_iri"] = meta_base_iri;
+        # config["context_path"] = meta_context_path;
+        # config["dir_split_number"] = meta_dir_split_number;
+        # config["items_per_file"] = meta_items_per_file;
+        # config["default_dir"] = meta_default_dir;
+        # config["supplier_prefix"] = "'" + meta_supplier_prefix + "'";
+        # if meta_rdf_output_in_chunks:
+        #     config["rdf_output_in_chunks"] = "True";
+        # else:
+        #     config["rdf_output_in_chunks"] = "False";
+        # if meta_zip_output_rdf:
+        #     config["zip_output_rdf"] = "True";
+        # else:  
+        #     config["zip_output_rdf"] = "False";
+        # config["source"] = meta_source;
+        # if meta_use_doi_api_services:
+        #     config["use_doi_api_service"] = "True";
+        # else:
+        #     config["use_doi_api_service"] = "False";
+        # config["workers_number"] = meta_workers_number;
+        # config["silencer"] = meta_silencer;
+        # if meta_generate_rdf_files:
+        #     config["generate_rdf_files"] = "True";
+        # else:
+        #     config["generate_rdf_files"] = "False";
         
         config_path = Path(meta_config_path)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with config_path.open("w", encoding="utf-8") as f:
-            yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
+        # config_path.parent.mkdir(parents=True, exist_ok=True)
+        # with config_path.open("w", encoding="utf-8") as f:
+        #     yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
 
         try: # run oc_meta
-            #cmd = ["python", oc_meta_dir, "-c", os.fspath(config_path)];
-            cmd = ["python", oc_meta_dir, "-c", os.fspath(Path("config.yaml"))];
+            cmd = ["python", oc_meta_dir, "-c", os.fspath(config_path)];
             run(cmd);
         except subprocess.CalledProcessError: # call on_triplestore to upload triples in case of error
             cmd = ["python", oc_meta_dir_error, meta_triplestore_url, os.fspath(meta_output_rdf_dir)];
@@ -845,15 +850,17 @@ class CleanUp(luigi.Task):
         
         # turning blazegraph off
         #docker_rm(blazegraph_container);
-        #TODO - turn off virtuoso
+        # turn off redis
+        docker_rm("redis");
+        # turn off virtuoso
         docker_rm(prov_virtuoso_name);
         #TODO - turn off QLEVER or whatever is used for index
         print("Placeholder - turn off QLEVER here");
 
         # delete temp_dir
-        shutil.rmtree(temp_dir);
+        #shutil.rmtree(temp_dir);
 
-        print("Finished task DatabaseSwitchOff");
+        print("Finished task CleanUp");
 
 if __name__ == "__main__":
 
@@ -876,13 +883,13 @@ if __name__ == "__main__":
     #task_preprocess.run();
     #task_validation.run();
     task_dbswitchon.run();
-    #task_ocmeta.run();
+    task_ocmeta.run();
     #task_ocmetaval.run();
     #task_ocmetacsv.run();
     #task_meta2redis.run();
     #task_ocindex.run();
-    task_upload.run();
+    #task_upload.run();
     #task_publication.run();
-    #task_cleanup.run();
+    task_cleanup.run();
     end = time.time();
     print("Total runtime: " + str(end-start) + "s");
