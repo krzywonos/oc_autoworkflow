@@ -1,0 +1,27 @@
+triplestore_url: http://localhost:8888/sparql
+provenance_triplestore_url: http://localhost:8888/sparql
+provenance_endpoints: []
+input_csv_dir: dir/temp/meta-validated
+base_output_dir: dir/output/meta
+resp_agent: https://w3id.org/oc/meta/prov/pa/1
+virtuoso_full_text_search: True
+blazegraph_full_text_search: False
+fuseki_full_text_search: False
+cache_endpoint: ''
+cache_update_endpoint: ''
+graphdb_connector_name: ''
+output_rdf_dir: dir/output/meta/rdf
+base_iri: https://w3id.org/oc/meta/
+context_path: https://w3id.org/oc/corpus/context.json
+dir_split_number: 10000
+items_per_file: 1000
+default_dir: _
+supplier_prefix: '060'
+rdf_output_in_chunks: False
+generate_rdf_files: True
+zip_output_rdf: True
+source: https://api.crossref.org/
+use_doi_api_service: False
+workers_number: 16
+silencer: ["author", "editor", "publisher"]
+

@@ -5,6 +5,7 @@
 Python
 Luigi
 Pandas
+ruamel.yaml
 oc_ocdm
 oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)
 oc_validator

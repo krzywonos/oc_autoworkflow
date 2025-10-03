@@ -8,7 +8,7 @@ oc_virtuoso_utilities_dir: "../virtuoso_utilities/virtuoso_utilities"
 oc_meta_dir: "../oc_meta/oc_meta/run/meta_process.py"
 oc_meta_dir_error: "../oc_meta/oc_meta/run/upload/on_triplestore.py"
 oc_meta_val_dir: "../oc_meta/oc_meta/run/meta/check_results.py"
-oc_meta_csv: "../oc_meta/oc_meta/run/csv_generator_lite.py"
+oc_meta_csv_dir: "../oc_meta/oc_meta/run/csv_generator_lite.py"
 meta2redis_dir: "../index/scripts/ocworkflow.py/populate_redis()"
 oc_index_dir: "../index/scripts/ocworkflow.py/gen_zipbatch()"
 upload_dir: ""
@@ -34,32 +34,39 @@ validation_elimination: "line" # line - eliminates just a single line in case of
 
 # SPARQL database for META
 meta_config_path: "dir/temp/meta_config.yaml" # directory where the meta_config.yaml will be generated
-meta_triplestore_url: "http://127.0.0.1:8888" # Endpoint URL to load the output RDF
-meta_provenance_triplestore_url: "http://127.0.0.1:8888" #TODO this should always be virtuoso no?
-meta_base_iri: "https://w3id.org/oc/meta/" # The base URI of entities on Meta. This setting can be safely left as is
-meta_context_path: "https://w3id.org/oc/corpus/context.json" # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
-meta_resp_agent: "https://w3id.org/oc/meta/prov/pa/1" # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
-meta_source: "https://api.crossref.org/" # Data source URL. This setting can be safely left as is
+meta_triplestore_url: http://localhost:8888/sparql # Endpoint URL to load the output RDF
+meta_provenance_triplestore_url: http://localhost:8888/sparql #TODO this should always be virtuoso no?
+meta_base_iri: https://w3id.org/oc/meta/ # The base URI of entities on Meta. This setting can be safely left as is
+meta_context_path: https://w3id.org/oc/corpus/context.json # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
+meta_resp_agent: https://w3id.org/oc/meta/prov/pa/1 # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
+meta_source: https://api.crossref.org/ # Data source URL. This setting can be safely left as is
 meta_cache_endpoint: ""
 meta_cache_update_endpoint: ""
 meta_graphdb_connector_name: ""
-meta_output_dir: dir/output/meta #output_dir + "/meta"
+meta_output_dir: dir/output/meta #output_dir + "/meta/csv"
+meta_redis_container: "redis"
 meta_redis_host: "localhost" # default = "localhost"
 meta_redis_port: "6379" # default = "6379"
 meta_redis_db: "0" # default = "0"
 meta_redis_cache_db: 1 #default = 1
 meta_supplier_prefix: "060" # A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
-meta_rdf_output_in_chunks: 0 # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
+meta_rdf_output_in_chunks: False # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
 meta_workers_number: 16 # Number of cores to devote to the Meta process
 meta_dir_split_number: 10000 # Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
 meta_items_per_file: 1000 # Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
 meta_default_dir: "_" # This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
-meta_generate_rdf_files: 0 # If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
-meta_zip_output_rdf: 1 # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
+meta_generate_rdf_files: True # If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
+meta_zip_output_rdf: True # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
 meta_output_rdf_dir: dir/output/meta/rdf # meta_output_dir + "/rdf"; Folder where RDF files are saved. Since these files are the heaviest, it is sometimes convenient to save them on HDD, while the triplestore needs to be on SSD for its efficient operation
 meta_silencer: '["author", "editor", "publisher"]' # Fields in the silencer list are only updated if there is no information on that field in OpenCitations Meta. For example, if 'author' is specified, any new authors are not added to the list if authors are already present.
 meta_normalize_titles: 1 # default = 1
-meta_use_doi_api_services: 0 # If True, use the DOI API service to check if DOIs are valid
+meta_use_doi_api_services: False # If True, use the DOI API service to check if DOIs are valid
+meta_virtuoso_full_text_search: True
+meta_blazegraph_full_text_search: False
+meta_fuseki_full_text_search: False
+meta_provenance_endpoints: []
+meta_input_csv_dir: dir/temp/meta-validated
+meta_base_output_dir: dir/output/meta
 
 
 # QLEVER for INDEX

@@ -15,6 +15,8 @@ import json;
 from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
+from ruamel.yaml import YAML;
+from ruamel.yaml.comments import CommentedMap;
 
 # declaration of variables loaded from config.yaml
 input_dir = None;
@@ -54,6 +56,7 @@ meta_cache_endpoint = None;
 meta_cache_update_endpoint = None;
 meta_graphdb_connector_name = None;
 meta_output_dir = None;
+meta_redis_container = None;
 meta_redis_host = None;
 meta_redis_port = None;
 meta_redis_db = None;
@@ -545,10 +548,10 @@ class DatabaseSwitchOn(luigi.Task):
         # r.raise_for_status()
 
         # REDIS for META
-        docker_rm(redis_container);
-        run(["docker", "run", "-d", "--name", redis_container, "-p", f"{preprocess_redis_port}:6379", redis_image]);
-        wait_for_port("localhost", preprocess_redis_port);
-        print(f"Redis ready at redis://localhost:{preprocess_redis_port}");
+        docker_rm(meta_redis_container);
+        run(["docker", "run", "-d", "--name", meta_redis_container, "-p", f"{meta_redis_port}:6379", redis_image]);
+        wait_for_port("localhost", meta_redis_port);
+        print(f"Redis ready at redis://localhost:{meta_redis_port}");
 
 
         # QLEVER in Docker for INDEX???
@@ -646,52 +649,80 @@ class OCMeta(luigi.Task):
     def run(self):
         print("Running task OCMeta");
         
-        # create config in yaml based on the meta configuration values
-        # config = {}
-        # config["triplestore_url"] = meta_triplestore_url;
-        # config["provenance_triplestore_url"] = meta_provenance_triplestore_url;
-        # config["provenance_endpoints"] = "[]";
-        # config["input_csv_dir"] = temp_dir + "/meta-validated";
-        # config["base_output_dir"] = meta_output_dir;
-        # config["resp_agent"] = meta_resp_agent;
-        # config["virtuoso_full_text_search"] = "True";
-        # config["blazegraph_full_text_search"] = "False";
-        # config["fuseki_full_text_search"] = "False";
-        # config["cache_endpoint"] = meta_cache_endpoint;
-        # config["cache_update_endpoint"] = meta_cache_update_endpoint;
-        # config["graphdb_connector_name"] = meta_graphdb_connector_name;
+        config_path = Path(meta_config_path);
 
-        # config["output_rdf_dir"] = meta_output_rdf_dir;
-        # config["base_iri"] = meta_base_iri;
-        # config["context_path"] = meta_context_path;
-        # config["dir_split_number"] = meta_dir_split_number;
-        # config["items_per_file"] = meta_items_per_file;
-        # config["default_dir"] = meta_default_dir;
-        # config["supplier_prefix"] = "'" + meta_supplier_prefix + "'";
-        # if meta_rdf_output_in_chunks:
-        #     config["rdf_output_in_chunks"] = "True";
-        # else:
-        #     config["rdf_output_in_chunks"] = "False";
-        # if meta_zip_output_rdf:
-        #     config["zip_output_rdf"] = "True";
-        # else:  
-        #     config["zip_output_rdf"] = "False";
-        # config["source"] = meta_source;
-        # if meta_use_doi_api_services:
-        #     config["use_doi_api_service"] = "True";
-        # else:
-        #     config["use_doi_api_service"] = "False";
-        # config["workers_number"] = meta_workers_number;
-        # config["silencer"] = meta_silencer;
-        # if meta_generate_rdf_files:
-        #     config["generate_rdf_files"] = "True";
-        # else:
-        #     config["generate_rdf_files"] = "False";
-        
-        config_path = Path(meta_config_path)
-        # config_path.parent.mkdir(parents=True, exist_ok=True)
-        # with config_path.open("w", encoding="utf-8") as f:
-        #     yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
+        # Map: "source.path.with.dots" -> "dest.path.with.dots"
+        # Example: copy src["build"]["code"] -> dst["app"]["version_code"]
+        KEY_MAP = {
+            "meta_triplestore_url": "triplestore_url",
+            "meta_provenance_triplestore_url": "provenance_triplestore_url",
+            "meta_base_iri": "base_iri",
+            "meta_context_path": "context_path",
+            "meta_resp_agent": "resp_agent",
+            "meta_source": "source",
+            "meta_cache_endpoint": "cache_endpoint",
+            "meta_cache_update_endpoint": "cache_update_endpoint",
+            "meta_graphdb_connector_name": "graphdb_connector_name",
+            "meta_output_dir": "base_output_dir",
+            "meta_supplier_prefix": "supplier_prefix",
+            "meta_rdf_output_in_chunks": "rdf_output_in_chunks",
+            "meta_workers_number": "workers_number",
+            "meta_dir_split_number": "dir_split_number",
+            "meta_items_per_file": "items_per_file",
+            "meta_default_dir": "default_dir",
+            "meta_generate_rdf_files": "generate_rdf_files",
+            "meta_zip_output_rdf": "zip_output_rdf",
+            "meta_output_rdf_dir": "output_rdf_dir",
+            "meta_silencer": "silencer",
+            "meta_normalize_titles": "normalize_titles",
+            "meta_use_doi_api_services": "use_doi_api_service",
+            "meta_provenance_endpoints": "provenance_endpoints",
+            "meta_input_csv_dir": "input_csv_dir",
+            "meta_base_output_dir": "base_output_dir",
+            "meta_virtuoso_full_text_search": "virtuoso_full_text_search",
+            "meta_blazegraph_full_text_search": "blazegraph_full_text_search",
+            "meta_fuseki_full_text_search": "fuseki_full_text_search"
+        };
+
+        yaml_rt = YAML(typ="rt");  # round-trip to preserve quotes/styles
+        yaml_rt.preserve_quotes = True;
+
+        with Path("config.yaml").open("r", encoding="utf-8") as f:
+            src = yaml_rt.load(f);
+
+        dst = CommentedMap();
+        errors = [];
+
+        for src_path, dst_path in KEY_MAP.items():
+            try:
+                # --- get value node from src (preserve style by reusing the node) ---
+                node = src;
+                for part in src_path.split("."):
+                    node = node[part];
+
+                # --- create nested maps in dst and set the value node ---
+                cur = dst;
+                parts = dst_path.split(".");
+                for p in parts[:-1]:
+                    if p not in cur or not isinstance(cur[p], CommentedMap):
+                        cur[p] = CommentedMap();
+                    cur = cur[p];
+                cur[parts[-1]] = node;
+            except Exception as e:
+                errors.append(f"Missing/invalid path '{src_path}': {e}");
+
+        if errors:
+            raise ValueError("\n".join(errors));
+
+        yaml_out = YAML(typ="rt");
+        yaml_out.preserve_quotes = True;
+        yaml_out.default_flow_style = False;
+        yaml_out.indent(mapping=2, sequence=2, offset=2);
+
+        with config_path.open("w", encoding="utf-8") as f:
+            yaml_out.dump(dst, f);
+
+        print(f"Wrote {config_path.resolve()}");
 
         try: # run oc_meta
             cmd = ["python", oc_meta_dir, "-c", os.fspath(config_path)];
@@ -700,6 +731,7 @@ class OCMeta(luigi.Task):
             cmd = ["python", oc_meta_dir_error, meta_triplestore_url, os.fspath(meta_output_rdf_dir)];
             run(cmd);
         
+        docker_rm(meta_redis_container);
         print("Finished task OCMeta");
 
     def output(self):
@@ -716,7 +748,7 @@ class OCMetaVal(luigi.Task):
         
         #validate new data in META nad PROV with oc_meta_val
         # meta_output_dir might need to be more specific here
-        cmd = ["python", oc_meta_val_dir, meta_output_dir, meta_config_path];
+        cmd = ["python", oc_meta_val_dir, meta_output_dir + "/csv", meta_config_path];
         run(cmd);
 
         print("Finished task OCMetaVal");
@@ -734,11 +766,18 @@ class OCMetaCsv(luigi.Task):
         print("Running task OCMetaCsv");
         
         #TODO: host redis here
+        docker_rm(meta_redis_container);
+        run(["docker", "run", "-d", "--name", meta_redis_container, "-p", f"{meta_redis_port}:6379", redis_image]);
+        wait_for_port("localhost", meta_redis_port);
+        print(f"Redis ready at redis://localhost:{meta_redis_port}");
         
-        cmd = ["python", oc_meta_csv_dir, "--config", meta_config_path, "--output", meta_output_dir + "/csv", "--redis-host", meta_redis_host, "--redis-port", meta_redis_port, "--redis-db", meta_redis_db];
+        #have to generate rdf files during oc_meta with meta_generate_rdf_files set to 1
+
+        cmd = ["python", oc_meta_csv_dir, "--config", meta_config_path, "--output", meta_output_dir + "/ocmetacsv_output", "--redis-host", meta_redis_host, "--redis-port", meta_redis_port, "--redis-db", meta_redis_db];
         run(cmd);
 
         #TODO: turn off redis
+        docker_rm(meta_redis_container);
 
         print("Finished task OCMetaCsv");
 
@@ -851,7 +890,7 @@ class CleanUp(luigi.Task):
         # turning blazegraph off
         #docker_rm(blazegraph_container);
         # turn off redis
-        docker_rm("redis");
+        print("Placeholder - turn off Redis here")
         # turn off virtuoso
         docker_rm(prov_virtuoso_name);
         #TODO - turn off QLEVER or whatever is used for index
@@ -880,16 +919,16 @@ if __name__ == "__main__":
     start = time.time();
     print("");
     task_loadconfig.run();
-    #task_preprocess.run();
-    #task_validation.run();
+    task_preprocess.run();
+    task_validation.run();
     task_dbswitchon.run();
     task_ocmeta.run();
-    #task_ocmetaval.run();
-    #task_ocmetacsv.run();
+    task_ocmetaval.run();
+    task_ocmetacsv.run();
     #task_meta2redis.run();
     #task_ocindex.run();
     #task_upload.run();
     #task_publication.run();
-    task_cleanup.run();
+    #task_cleanup.run();
     end = time.time();
     print("Total runtime: " + str(end-start) + "s");
