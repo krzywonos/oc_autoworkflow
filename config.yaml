@@ -9,10 +9,11 @@ oc_meta_dir: "../oc_meta/oc_meta/run/meta_process.py"
 oc_meta_dir_error: "../oc_meta/oc_meta/run/upload/on_triplestore.py"
 oc_meta_val_dir: "../oc_meta/oc_meta/run/meta/check_results.py"
 oc_meta_csv_dir: "../oc_meta/oc_meta/run/csv_generator_lite.py"
-meta2redis_dir: "../index/scripts/ocworkflow.py/populate_redis()"
+meta2redis_dir: "../index/scripts/meta2redis.py"
 oc_index_dir: "../index/scripts/ocworkflow.py/gen_zipbatch()"
 upload_dir: ""
 publication_dir: ""
+oc_index_config_dir: "../index/config.ini"
 
 # docker image and container information
 fuseki_image: "stain/jena-fuseki"

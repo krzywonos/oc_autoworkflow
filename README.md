@@ -10,8 +10,10 @@ oc_ocdm
 oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)
 oc_validator
 virtuoso_utilities
+oc_index
 
 oc_meta code stored locally
+oc_index code stored locally
 virtuoso_utilities stored locally
 Docker Desktop installed and running
 OpenLink Virtuoso installed
