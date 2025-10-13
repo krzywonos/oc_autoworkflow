@@ -10,7 +10,8 @@ oc_meta_dir_error: "../oc_meta/oc_meta/run/upload/on_triplestore.py"
 oc_meta_val_dir: "../oc_meta/oc_meta/run/meta/check_results.py"
 oc_meta_csv_dir: "../oc_meta/oc_meta/run/csv_generator_lite.py"
 meta2redis_dir: "../index/scripts/meta2redis.py"
-oc_index_dir: "../index/scripts/ocworkflow.py/gen_zipbatch()"
+oc_index_dir_1: "../index/scripts/cnc.py"
+oc_index_dir_2: "../index/scripts/dump_index.py"
 upload_dir: ""
 publication_dir: ""
 oc_index_config_dir: "../index/config.ini"
@@ -69,9 +70,6 @@ meta_provenance_endpoints: []
 meta_input_csv_dir: dir/temp/meta-validated
 meta_base_output_dir: dir/output/meta
 
-
-# QLEVER for INDEX
-
 # Virtuoso for PROV
 prov_virtuoso_custom: 1 # default: 1. set to 0 to disable customised usage.
 
@@ -96,3 +94,4 @@ prov_virtuoso_wait_ready: 1 # default: 1. Wait until Virtuoso is ready to accept
 prov_virtuoso_enable_write_permissions: 1 # default: 1. Makes database publicly writable.
 prov_virtuoso_force_remove: 1
 
+# INDEX

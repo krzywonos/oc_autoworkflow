@@ -916,18 +916,18 @@ if __name__ == "__main__":
     task_publication = Publication();
     task_cleanup = CleanUp();
 
-    webbrowser.open("https://localhost:8082");
+    #webbrowser.open("https://localhost:8082");
 
     start = time.time();
     print("");
     task_loadconfig.run();
-    task_preprocess.run();
-    task_validation.run();
-    task_dbswitchon.run();
-    task_ocmeta.run();
-    task_ocmetaval.run();
-    task_ocmetacsv.run();
-    #task_meta2redis.run();
+    #task_preprocess.run();
+    #task_validation.run();
+    #task_dbswitchon.run();
+    #task_ocmeta.run();
+    #task_ocmetaval.run();
+    #task_ocmetacsv.run();
+    task_meta2redis.run();
     #task_ocindex.run();
     #task_upload.run();
     #task_publication.run();
