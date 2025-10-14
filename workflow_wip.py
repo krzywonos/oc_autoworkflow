@@ -822,11 +822,11 @@ class OCIndex(luigi.Task):
         print("Placeholder - call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data");
 
         #cnc.py
-        cmd = ["python", oc_index_cnc_dir, "-i", input_dir + "/index", "-t", "CSV", "--service", index_service, "-o", output_dir + "/index", "-p", str(index_cnc_processes)];
+        cmd = ["python", oc_index_cnc_dir, "--input", input_dir + "/index", "--intype", "CSV", "--service", index_service, "--output", output_dir + "/index", "--processes", str(index_cnc_processes)];
         run(cmd);
 
         #dump_index.py
-        cmd = ["python", oc_index_dumpindex_dir, "-d", index_date, "-w", str(index_dumpindex_workers)];
+        cmd = ["python", oc_index_dumpindex_dir, "--date", index_date, "--workers", str(index_dumpindex_workers)];
         run(cmd);
         
         print("Finished task OCIndex");
