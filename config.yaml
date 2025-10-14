@@ -10,8 +10,8 @@ oc_meta_dir_error: "../oc_meta/oc_meta/run/upload/on_triplestore.py"
 oc_meta_val_dir: "../oc_meta/oc_meta/run/meta/check_results.py"
 oc_meta_csv_dir: "../oc_meta/oc_meta/run/csv_generator_lite.py"
 meta2redis_dir: "../index/scripts/meta2redis.py"
-oc_index_dir_1: "../index/scripts/cnc.py"
-oc_index_dir_2: "../index/scripts/dump_index.py"
+oc_index_cnc_dir: "../index/scripts/cnc.py"
+oc_index_dumpindex_dir: "../index/scripts/dump_index.py"
 upload_dir: ""
 publication_dir: ""
 oc_index_config_dir: "../index/config.ini"
@@ -95,3 +95,7 @@ prov_virtuoso_enable_write_permissions: 1 # default: 1. Makes database publicly 
 prov_virtuoso_force_remove: 1
 
 # INDEX
+index_service: "COCI" # opencitations collection of the datasource
+index_cnc_processes: 1 # number of parallel processes to use for cnc
+index_date: "20251014" # YYYYMMDD date of the publication date of the dump
+index_dumpindex_workers: 1 # number of workers for dump_index, default - 1, recommended max 6

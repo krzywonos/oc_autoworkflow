@@ -31,7 +31,8 @@ oc_meta_dir_error = None;
 oc_meta_val_dir = None;
 oc_meta_csv_dir = None;
 meta2redis_dir = None;
-oc_index_dir = None;
+oc_index_cnc_dir = None;
+oc_index_dumpindex_dir = None;
 upload_dir = None;
 publication_dir = None;
 oc_index_config_dir = None;
@@ -95,6 +96,10 @@ prov_virtuoso_detach = None;
 prov_virtuoso_wait_ready = None;
 prov_virtuoso_enable_write_permissions = None;
 prov_virtuoso_force_remove = None;
+index_service = None;
+index_cnc_processes = None;
+index_date = None;
+index_dumpindex_workers = None;
 
 # helper functions
 def wait_for_port(host: str, port: int, timeout: int = 60):
@@ -815,6 +820,14 @@ class OCIndex(luigi.Task):
         
         #TODO call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data
         print("Placeholder - call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data");
+
+        #cnc.py
+        cmd = ["python", oc_index_cnc_dir, "-i", input_dir + "/index", "-t", "CSV", "--service", index_service, "-o", output_dir + "/index", "-p", str(index_cnc_processes)];
+        run(cmd);
+
+        #dump_index.py
+        cmd = ["python", oc_index_dumpindex_dir, "-d", index_date, "-w", str(index_dumpindex_workers)];
+        run(cmd);
         
         print("Finished task OCIndex");
 
@@ -928,7 +941,7 @@ if __name__ == "__main__":
     #task_ocmetaval.run();
     #task_ocmetacsv.run();
     task_meta2redis.run();
-    #task_ocindex.run();
+    task_ocindex.run();
     #task_upload.run();
     #task_publication.run();
     #task_cleanup.run();
