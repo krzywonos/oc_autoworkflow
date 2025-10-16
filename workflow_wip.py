@@ -18,6 +18,7 @@ from urllib.parse import urlparse;
 from oc_validator.main import Validator;
 from ruamel.yaml import YAML;
 from ruamel.yaml.comments import CommentedMap;
+from configparser import ConfigParser;
 
 # declaration of variables loaded from config.yaml
 input_dir = None;
@@ -31,6 +32,7 @@ oc_meta_dir_error = None;
 oc_meta_val_dir = None;
 oc_meta_csv_dir = None;
 meta2redis_dir = None;
+oc_index_config_dir = None;
 oc_index_cnc_dir = None;
 oc_index_dumpindex_dir = None;
 upload_dir = None;
@@ -127,6 +129,14 @@ def docker_rm(container: str):
         run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
     except subprocess.CalledProcessError:
         pass;
+
+def get_nested_yaml(cfg, dotted, default=None):
+    cur = cfg
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return default
+        cur = cur[part]
+    return cur
 
 # luigi tasks
 
@@ -818,8 +828,149 @@ class OCIndex(luigi.Task):
     def run(self):
         print("Running task OCIndex");
         
-        #TODO call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data
-        print("Placeholder - call oc_index to read data from citations input file and in-RAM REDIS to update PROV and create raw data");
+        # generating config.ini
+
+        # --- paths ---
+        YAML_IN  = Path("config.yaml")
+        INI_OUT  = Path(oc_index_config_dir)
+
+        # --- load YAML ---
+        cfg = yaml.safe_load(YAML_IN.read_text(encoding="utf-8")) or {}
+
+        ini = ConfigParser(interpolation=None, delimiters=("="))
+        ini.optionxform = str  # keep key names exact
+
+        # --- mapping: YAML dotted path -> (INI section, key) ---
+        KEY_MAP = {
+            # ---------- IDENTIFIER ----------
+            "index_identifier_pmid" : ("identifier", "pmid"),
+            "index_identifier_doi" : ("identifier", "doi"),
+            "index_identifier_omid" : ("identifier", "omid"),
+
+            # ---------- LOGGING ----------
+            "index_logging_verbose": ("logging", "verbose"),
+
+            # ---------- REDIS ----------
+            "index_redis_host": ("redis", "host"),
+            "index_redis_port": ("redis", "port"),
+            "index_redis_batch_size": ("redis", "batch_size"),
+
+            # ---------- CNC ----------
+            "index_cnc_orcid": ("cnc", "orcid"),
+            "index_cnc_lookup": ("cnc", "lookup"),
+            "index_cnc_use_api": ("cnc", "use_api"),
+            "index_cnc_services": ("cnc", "services"),
+            "index_cnc_identifiers": ("cnc", "identifiers"),
+            "index_cnc_br_ids": ("cnc", "br_ids"),
+            "index_cnc_ra_ids": ("cnc", "ra_ids"),
+            "index_cnc_db_cits": ("cnc", "db_cits"),
+            "index_cnc_db_omid": ("cnc", "db_omid"),
+            "index_cnc_db_br": ("cnc", "db_br"),
+            "index_cnc_db_ra": ("cnc", "db_ra"),
+
+            # ---------- CNC SERVICE TEMPLATE ----------
+            "index_cnc_service_template_prefix": ("CNC_SERVICE_TEMPLATE", "prefix"),
+            "index_cnc_service_template_parser": ("CNC_SERVICE_TEMPLATE", "parser"),
+            "index_cnc_service_template_source": ("CNC_SERVICE_TEMPLATE", "source"),
+            "index_cnc_service_template_agent": ("CNC_SERVICE_TEMPLATE", "agent"),
+            "index_cnc_service_template_baseurl": ("CNC_SERVICE_TEMPLATE", "baseurl"),
+            "index_cnc_service_template_idbaseurl": ("CNC_SERVICE_TEMPLATE", "idbaseurl"),
+            "index_cnc_service_template_service": ("CNC_SERVICE_TEMPLATE", "service"),
+            "index_cnc_service_template_datasource": ("CNC_SERVICE_TEMPLATE", "datasource"),
+            "index_cnc_service_template_identifier": ("CNC_SERVICE_TEMPLATE", "identifier"),
+
+            # ---------- INDEX ----------
+            "index_index_prefix": ("INDEX", "prefix"),
+            "index_index_parser": ("INDEX", "parser"),
+            "index_index_validator": ("INDEX", "validator"),
+            "index_index_source": ("INDEX", "source"),
+            "index_index_agent": ("INDEX", "agent"),
+            "index_index_baseurl": ("INDEX", "baseurl"),
+            "index_index_idbaseurl": ("INDEX", "idbaseurl"),
+            "index_index_service": ("INDEX", "service"),
+            "index_index_datasource": ("INDEX", "datasource"),
+            "index_index_db": ("INDEX", "db"),
+            "index_index_identifier": ("INDEX", "identifier"),
+
+            # ---------- COCI ----------
+            "index_coci_prefix": ("COCI", "prefix"),
+            "index_coci_parser": ("COCI", "parser"),
+            "index_coci_validator": ("COCI", "validator"),
+            "index_coci_source": ("COCI", "source"),
+            "index_coci_agent": ("COCI", "agent"),
+            "index_coci_baseurl": ("COCI", "baseurl"),
+            "index_coci_idbaseurl": ("COCI", "idbaseurl"),
+            "index_coci_service": ("COCI", "service"),
+            "index_coci_datasource": ("COCI", "datasource"),
+            "index_coci_db": ("COCI", "db"),
+            "index_coci_identifier": ("COCI", "identifier"),
+
+            # ---------- POCI ----------
+            "index_poci_prefix": ("POCI", "prefix"),
+            "index_poci_parser": ("POCI", "parser"),
+            "index_poci_validator": ("POCI", "validator"),
+            "index_poci_source": ("POCI", "source"),
+            "index_poci_agent": ("POCI", "agent"),
+            "index_poci_baseurl": ("POCI", "baseurl"),
+            "index_poci_idbaseurl": ("POCI", "idbaseurl"),
+            "index_poci_service": ("POCI", "service"),
+            "index_poci_datasource": ("POCI", "datasource"),
+            "index_poci_db": ("POCI", "db"),
+            "index_poci_identifier": ("POCI", "identifier"),
+
+            # ---------- CROCI ----------
+            "index_croci_prefix": ("CROCI", "prefix"),
+            "index_croci_parser": ("CROCI", "parser"),
+            "index_croci_validator": ("CROCI", "validator"),
+            "index_croci_source": ("CROCI", "source"),
+            "index_croci_agent": ("CROCI", "agent"),
+            "index_croci_baseurl": ("CROCI", "baseurl"),
+            "index_croci_idbaseurl": ("CROCI", "idbaseurl"),
+            "index_croci_service": ("CROCI", "service"),
+            "index_croci_datasource": ("CROCI", "datasource"),
+            "index_croci_db": ("CROCI", "db"),
+            "index_croci_identifier": ("CROCI", "identifier"),
+
+            # ---------- DOCI ----------
+            "index_doci_prefix": ("DOCI", "prefix"),
+            "index_doci_parser": ("DOCI", "parser"),
+            "index_doci_validator": ("DOCI", "validator"),
+            "index_doci_source": ("DOCI", "source"),
+            "index_doci_agent": ("DOCI", "agent"),
+            "index_doci_baseurl": ("DOCI", "baseurl"),
+            "index_doci_idbaseurl": ("DOCI", "idbaseurl"),
+            "index_doci_service": ("DOCI", "service"),
+            "index_doci_datasource": ("DOCI", "datasource"),
+            "index_doci_db": ("DOCI", "db"),
+            "index_doci_identifier": ("DOCI", "identifier"),
+
+            # ---------- JOCI ----------
+            "index_joci_prefix": ("JOCI", "prefix"),
+            "index_joci_parser": ("JOCI", "parser"),
+            "index_joci_validator": ("JOCI", "validator"),
+            "index_joci_source": ("JOCI", "source"),
+            "index_joci_agent": ("JOCI", "agent"),
+            "index_joci_baseurl": ("JOCI", "baseurl"),
+            "index_joci_idbaseurl": ("JOCI", "idbaseurl"),
+            "index_joci_service": ("JOCI", "service"),
+            "index_joci_datasource": ("JOCI", "datasource"),
+            "index_joci_db": ("JOCI", "db"),
+            "index_joci_identifier": ("JOCI", "identifier")
+        }
+
+        # --- apply overrides from YAML to INI ---
+        errors = []
+        for yaml_path, (section, key) in KEY_MAP.items():
+            val = get_nested_yaml(cfg, yaml_path, default=None)
+            if val is None:
+                continue
+            ini.setdefault(section, {})
+            ini[section][key] = str(val)
+
+        # --- write INI ---
+        INI_OUT.parent.mkdir(parents=True, exist_ok=True)
+        with INI_OUT.open("w", encoding="utf-8") as f:
+            ini.write(f, space_around_delimiters=False)
 
         #cnc.py
         cmd = ["python", oc_index_cnc_dir, "--input", input_dir + "/index", "--intype", "CSV", "--service", index_service, "--output", output_dir + "/index", "--processes", str(index_cnc_processes)];
@@ -934,14 +1085,14 @@ if __name__ == "__main__":
     start = time.time();
     print("");
     task_loadconfig.run();
-    #task_preprocess.run();
-    #task_validation.run();
-    #task_dbswitchon.run();
-    #task_ocmeta.run();
-    #task_ocmetaval.run();
-    #task_ocmetacsv.run();
+    task_preprocess.run();
+    task_validation.run();
+    task_dbswitchon.run();
+    task_ocmeta.run();
+    task_ocmetaval.run();
+    task_ocmetacsv.run();
     task_meta2redis.run();
-    task_ocindex.run();
+    #task_ocindex.run();
     #task_upload.run();
     #task_publication.run();
     #task_cleanup.run();
