@@ -13,6 +13,9 @@ import pandas as pd;
 import shutil;
 import json;
 import webbrowser;
+import platform;
+import sys;
+from multiprocessing import freeze_support;
 from pathlib import Path;
 from urllib.parse import urlparse;
 from oc_validator.main import Validator;
@@ -139,9 +142,85 @@ def get_nested_yaml(cfg, dotted, default=None):
     return cur
 
 # luigi tasks
+# class RunScheduler(luigi.Task):
+#     param = luigi.PathParameter(default = "dir/temp/runscheduler.txt");
+
+#     def requires(self):
+#         return None;
+
+#     def output(self):
+#         return luigi.LocalTarget(self.param);
+    
+#     def run(self):
+#         # Command to run — tweak if you prefer 'poetry run luigid' or a custom venv
+#         LUIGI_CMD = "luigid"
+
+#         # If luigid isn't on PATH, try a Python fallback
+#         if shutil.which("luigid") is None:
+#             LUIGI_CMD = f'"{sys.executable}" -m luigi.cmdline luigid'
+
+#         system = platform.system()
+
+#         if system == "Windows":
+#             # New console window, keep it open (/K)
+#             # Title helps identify the window
+#             wrapped = f'cmd /k {LUIGI_CMD}'
+#             subprocess.Popen(f'start "Luigi Scheduler" {wrapped}', shell=True)
+
+#         elif system == "Darwin":
+#             # macOS: open Terminal and run; window stays open
+#             osa = [
+#                 "osascript", "-e",
+#                 f'''tell application "Terminal"
+#                         activate
+#                         do script "{LUIGI_CMD}"
+#                     end tell'''
+#             ]
+#             subprocess.Popen(osa)
+
+#         else:
+#             # Linux / *nix — try common terminals in order
+#             def which(x): return shutil.which(x) is not None
+
+#             if which("gnome-terminal"):
+#                 # gnome-terminal: run bash -lc so PATH/aliases are loaded; keep open with exec bash
+#                 subprocess.Popen(["gnome-terminal", "--", "bash", "-lc", f"{LUIGI_CMD}; echo; echo 'Press Ctrl+C or close window to stop.'; exec bash"])
+#             elif which("konsole"):
+#                 # konsole: --noclose keeps it open after command completes
+#                 subprocess.Popen(["konsole", "--noclose", "-e", "bash", "-lc", LUIGI_CMD])
+#             elif which("xfce4-terminal"):
+#                 subprocess.Popen(["xfce4-terminal", "--hold", "-e", f"bash -lc \"{LUIGI_CMD}; echo; echo 'Press any key to close'; read -n 1\""])
+#             elif which("mate-terminal"):
+#                 subprocess.Popen(["mate-terminal", "--", "bash", "-lc", f"{LUIGI_CMD}; echo; echo 'Press Ctrl+C or close window to stop.'; exec bash"])
+#             elif which("lxterminal"):
+#                 subprocess.Popen(["lxterminal", "-e", f"bash -lc \"{LUIGI_CMD}; echo; echo 'Press any key to close'; read -n 1\""])
+#             elif which("alacritty"):
+#                 subprocess.Popen(["alacritty", "-e", "bash", "-lc", f"{LUIGI_CMD}; echo; echo 'Press Ctrl+C or close window to stop.'; exec bash"])
+#             elif which("kitty"):
+#                 subprocess.Popen(["kitty", "bash", "-lc", f"{LUIGI_CMD}; echo; echo 'Press Ctrl+C or close window to stop.'; exec bash"])
+#             elif which("xterm"):
+#                 # xterm: -hold keeps it open
+#                 subprocess.Popen(["xterm", "-hold", "-e", "bash", "-lc", LUIGI_CMD])
+#             else:
+#                 # Fallback: run in the current terminal (no new window available)
+#                 print("No known terminal emulator found. Running luigid in this terminal.\n"
+#                         "   (Press Ctrl+C to stop.)")
+#                 subprocess.Popen(LUIGI_CMD, shell=True)
+
+#         print("Luigi scheduler starting in a new window… (UI: http://localhost:8082)")
+
+#         with self.output().open("w") as f:
+#             f.write("ok\n");
+
 
 class LoadConfig(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter(default = "dir/temp/loadconfig.txt");
+
+    def requires(self):
+        return None;
+
+    def output(self):
+        return luigi.LocalTarget(self.param);
 
     def run(self):
         # path to YAML
@@ -204,14 +283,21 @@ class LoadConfig(luigi.Task):
         # show a quick summary
         print("Loaded config keys:", ", ".join(sorted(cfg.keys())));
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param);
+        with self.output().open("w") as f:
+            f.write("ok\n");
 
 class Preprocess(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param1 = luigi.PathParameter(default = "dir/temp/index-preprocessed/success.txt");
+    param2 = luigi.PathParameter(default = "dir/temp/meta-preprocessed/success.txt");
 
     def requires(self):
-        return LoadConfig(self.param);
+        return LoadConfig();
+
+    def output(self):
+        return [
+            luigi.LocalTarget(self.param1),
+            luigi.LocalTarget(self.param2)
+        ]
 
     def run(self):
 
@@ -270,17 +356,26 @@ class Preprocess(luigi.Task):
         
         else:
             print("Incorrect value for preprocess_storage_type");
+        
+        for tgt in self.output():
+            with tgt.open("w") as f:
+                f.write("ok\n");
 
         print("Finished task Preprocess");
-
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param);
+    
     
 class Validation(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param1 = luigi.PathParameter(default = "dir/temp/index-validated/success.txt");
+    param2 = luigi.PathParameter(default = "dir/temp/meta-validated/success.txt");
 
     def requires(self):
-        return Preprocess(self.param);
+        return Preprocess(param1 = "dir/temp/index-preprocessed/success.txt", param2 = "dir/temp/meta-preprocessed/success.txt");
+
+    def output(self):
+        return [
+            luigi.LocalTarget(self.param1),
+            luigi.LocalTarget(self.param2)
+        ]
 
     def run(self):
         print("Running task Validation");
@@ -459,17 +554,23 @@ class Validation(luigi.Task):
 
         else:
             print(f"Validation elimination mode: NONE (validation_elimination={validation_elimination!r})");
+        
+        for tgt in self.output():
+            with tgt.open("w") as f:
+                f.write("ok\n");
 
         print("Finished task Validation");
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
+    
 
 class DatabaseSwitchOn(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter(default = "dir/temp/dbswitchon.txt");
 
     def requires(self):
-        return Preprocess(self.param);
+        return Validation(param1 = "dir/temp/index-validated/success.txt", param2 = "dir/temp/meta-validated/success.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param)
 
     def run(self):
         print("Running task DatabaseSwitchOn");
@@ -652,16 +753,21 @@ class DatabaseSwitchOn(luigi.Task):
             cmd.append("--recursive");
             run(cmd);
         
+        with self.output().open("w") as f:
+            f.write("ok\n");
+        
         print("Finished task DatabaseSwitchOn");
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
+    
 
 class OCMeta(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter(default = "dir/output/meta/success.txt");
 
     def requires(self):
-        return Validator(self.param), DatabaseSwitchOn(self.param);
+        return Validation(param1 = "dir/temp/index-validated/success.txt", param2 = "dir/temp/meta-validated/success.txt"), DatabaseSwitchOn(param = "dir/temp/dbswitchon.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param);
 
     def run(self):
         print("Running task OCMeta");
@@ -749,36 +855,26 @@ class OCMeta(luigi.Task):
             run(cmd);
         
         docker_rm(meta_redis_container);
-        print("Finished task OCMeta");
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
-    
-class OCMetaVal(luigi.Task):
-    param = luigi.Parameter(default = 42);
-
-    def requires(self):
-        return OCMeta(self.param);
-
-    def run(self):
-        print("Running task OCMetaVal");
+        with self.output().open("w") as f:
+            f.write("ok\n");
         
-        cmd = ["python", oc_meta_val_dir, meta_output_dir + "/csv", meta_config_path];
-        run(cmd);
-
-        print("Finished task OCMetaVal");
-
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
-
+        print("Finished task OCMeta");
+    
 class OCMetaCsv(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter(default = "dir/output/meta/ocmetacsv_output/success.txt");
 
     def requires(self):
-        return OCMetaVal(self.param);
+        return OCMeta(param = "dir/output/meta/success.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param)
 
     def run(self):
         print("Running task OCMetaCsv");
+
+        cmd = ["python", oc_meta_val_dir, meta_output_dir + "/csv", meta_config_path];
+        run(cmd);
         
         docker_rm(meta_redis_container);
         run(["docker", "run", "-d", "--name", meta_redis_container, "-p", f"{meta_redis_port}:6379", redis_image]);
@@ -791,16 +887,20 @@ class OCMetaCsv(luigi.Task):
 
         docker_rm(meta_redis_container);
 
+        with self.output().open("w") as f:
+            f.write("ok\n");
+
         print("Finished task OCMetaCsv");
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
     
 class Meta2Redis(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter(default = "dir/temp/meta2redis.txt");
 
     def requires(self):
-        return OCMetaCsv(self.param);
+        return OCMetaCsv();
+
+    def output(self):
+        return luigi.LocalTarget(self.param)
 
     def run(self):
         print("Running task Meta2Redis");
@@ -814,16 +914,21 @@ class Meta2Redis(luigi.Task):
         cmd = ["python", meta2redis_dir, "--dump", meta_output_dir + "/ocmetacsv_output"];
         run(cmd);
 
+        with self.output().open("w") as f:
+            f.write("ok\n");
+
         print("Finished task Meta2Redis");
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
+    
 
 class OCIndex(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter(default = "dir/output/index/success.txt");
 
     def requires(self):
-        return Meta2Redis(self.param);
+        return Meta2Redis(param = "dir/temp/meta2redis.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param)
 
     def run(self):
         print("Running task OCIndex");
@@ -979,17 +1084,20 @@ class OCIndex(luigi.Task):
         #dump_index.py
         cmd = ["python", oc_index_dumpindex_dir, "--date", index_date, "--workers", str(index_dumpindex_workers)];
         run(cmd);
+
+        with self.output().open("w") as f:
+            f.write("ok\n");
         
         print("Finished task OCIndex");
 
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
-
-class Upload(luigi.Task):
-    param = luigi.Parameter(default = 42);
+class Dump(luigi.Task):
+    param = luigi.PathParameter(default = "dir/output/n-quads-dump/success.txt");
 
     def requires(self):
-        return OCIndex(self.param);
+        return OCIndex(param = "dir/output/index/success.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param)
 
     def run(self):
         print("Running task Upload");
@@ -1020,33 +1128,16 @@ class Upload(luigi.Task):
                 cmd.append("--no-compression");
             run(cmd);
 
+        with self.output().open("w") as f:
+            f.write("ok\n");
+        
         print("Finished task Upload");
-
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
     
-class Publication(luigi.Task):
-    param = luigi.Parameter(default = 42);
-
-    def requires(self):
-        return Upload(self.param);
-
-    def run(self):
-        print("Running task Publication");
-        
-        #TODO? ?maybe? ?call? ?publication? ?with? ?raw? ?data?
-        print("Placeholder? - calling publication with raw data?");
-        
-        print("Finished task Publication");
-
-    def output(self):
-        return luigi.LocalTarget("abcabc-%s.txt" % self.param)
-
 class CleanUp(luigi.Task):
-    param = luigi.Parameter(default = 42);
+    param = luigi.PathParameter("cleanup.txt");
 
     def requires(self):
-        return DatabaseSwitchOn(self.param);
+        return DatabaseSwitchOn(param = "dir/temp/dbswitchon.txt");
 
     def run(self):
         print("Running task DatabaseSwitchOff");
@@ -1063,38 +1154,64 @@ class CleanUp(luigi.Task):
         # delete temp_dir
         #shutil.rmtree(temp_dir);
 
+        with self.output().open("w") as f:
+            f.write("ok\n");
+
         print("Finished task CleanUp");
 
 if __name__ == "__main__":
+    webbrowser.open("https://localhost:8082");
 
-    task_loadconfig = LoadConfig();
-    task_preprocess = Preprocess();
-    task_validation = Validation();
-    task_dbswitchon = DatabaseSwitchOn();
-    task_ocmeta = OCMeta();
-    task_ocmetaval = OCMetaVal();
-    task_ocmetacsv = OCMetaCsv();
-    task_meta2redis = Meta2Redis();
-    task_ocindex = OCIndex();
-    task_upload = Upload();
-    task_publication = Publication();
-    task_cleanup = CleanUp();
+    freeze_support();
 
-    #webbrowser.open("https://localhost:8082");
+    tasks_to_run = [
+        LoadConfig(),
+        Preprocess(),
+        Validation(),
+        DatabaseSwitchOn(),
+        OCMeta(),
+        OCMetaCsv(),
+        Meta2Redis(),
+        OCIndex(),
+        Dump(),
+        CleanUp()
+    ];
 
-    start = time.time();
-    print("");
-    task_loadconfig.run();
-    task_preprocess.run();
-    task_validation.run();
-    task_dbswitchon.run();
-    task_ocmeta.run();
-    task_ocmetaval.run();
-    task_ocmetacsv.run();
-    task_meta2redis.run();
-    #task_ocindex.run();
-    #task_upload.run();
-    #task_publication.run();
-    #task_cleanup.run();
-    end = time.time();
-    print("Total runtime: " + str(end-start) + "s");
+    ok = luigi.build(
+        tasks_to_run,
+        workers=1,
+        local_scheduler=False,
+        scheduler_host="127.0.0.1",
+        scheduler_port=8082,
+        detailed_summary=True
+    );
+    raise SystemExit(0 if ok else 1);
+
+    # task_runscheduler = RunScheduler();
+    # task_loadconfig = LoadConfig();
+    # task_preprocess = Preprocess();
+    # task_validation = Validation();
+    # task_dbswitchon = DatabaseSwitchOn();
+    # task_ocmeta = OCMeta();
+    # task_ocmetacsv = OCMetaCsv();
+    # task_meta2redis = Meta2Redis();
+    # task_ocindex = OCIndex();
+    # task_dump = Dump();
+    # task_cleanup = CleanUp();
+
+    # start = time.time();
+    # print("");
+    # task_runscheduler.run();
+    # webbrowser.open("https://localhost:8082");
+    # task_loadconfig.run();
+    # task_preprocess.run();
+    # task_validation.run();
+    # task_dbswitchon.run();
+    # task_ocmeta.run();
+    # task_ocmetacsv.run();
+    # task_meta2redis.run();
+    # #task_ocindex.run();
+    # task_dump.run();
+    # task_cleanup.run();
+    # end = time.time();
+    # print("Total runtime: " + str(end-start) + "s");

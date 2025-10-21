@@ -1,4 +1,4 @@
-# directories
+# DIRECTORIES
 input_dir: "dir/input"
 temp_dir: "dir/temp"
 output_dir: "dir/output"
@@ -10,13 +10,13 @@ oc_meta_dir_error: "../oc_meta/oc_meta/run/upload/on_triplestore.py"
 oc_meta_val_dir: "../oc_meta/oc_meta/run/meta/check_results.py"
 oc_meta_csv_dir: "../oc_meta/oc_meta/run/csv_generator_lite.py"
 meta2redis_dir: "../index/scripts/meta2redis.py"
+oc_index_config_dir: "../index/config.ini"
 oc_index_cnc_dir: "../index/scripts/cnc.py"
 oc_index_dumpindex_dir: "../index/scripts/dump_index.py"
 upload_dir: ""
 publication_dir: ""
-oc_index_config_dir: "../index/config.ini"
 
-# docker image and container information
+# PREPROCESSING DOCKER IMAGE AND CONTAINER INFO
 fuseki_image: "stain/jena-fuseki"
 redis_image: "redis:7-alpine"
 blazegraph_image: "lyrasis/blazegraph:2.1.5"
@@ -24,78 +24,245 @@ redis_container: "my-redis"
 fuseki_container: "my-fuseki"
 blazegraph_container: "my-blazegraph"
 
-# preprocess_input
+# PREPROCESSING
 preprocess_storage_type: "sparql" # can be "redis" or "sparql"
 preprocess_redis_port: "6379"
 preprocess_redis_db_number: "10"
 preprocess_sparql_endpoint: "localhost:3030/ds/sparql"
 
-# validation
-validation_type: 2 # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks
-validation_elimination: "line" # line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
+# VALIDATION
 
-# SPARQL database for META
-meta_config_path: "dir/temp/meta_config.yaml" # directory where the meta_config.yaml will be generated
-meta_triplestore_url: http://localhost:8888/sparql # Endpoint URL to load the output RDF
-meta_provenance_triplestore_url: http://localhost:8888/sparql #TODO this should always be virtuoso no?
-meta_base_iri: https://w3id.org/oc/meta/ # The base URI of entities on Meta. This setting can be safely left as is
-meta_context_path: https://w3id.org/oc/corpus/context.json # URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
-meta_resp_agent: https://w3id.org/oc/meta/prov/pa/1 # A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
-meta_source: https://api.crossref.org/ # Data source URL. This setting can be safely left as is
-meta_cache_endpoint: ""
-meta_cache_update_endpoint: ""
-meta_graphdb_connector_name: ""
-meta_output_dir: dir/output/meta #output_dir + "/meta/csv"
-meta_redis_container: "redis"
-meta_redis_host: "localhost" # default = "localhost"
-meta_redis_port: "6379" # default = "6379"
-meta_redis_db: "0" # default = "0"
-meta_redis_cache_db: 1 #default = 1
-meta_supplier_prefix: "060" # A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
-meta_rdf_output_in_chunks: False # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
-meta_workers_number: 16 # Number of cores to devote to the Meta process
-meta_dir_split_number: 10000 # Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
-meta_items_per_file: 1000 # Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
-meta_default_dir: "_" # This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
-meta_generate_rdf_files: True # If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
-meta_zip_output_rdf: True # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
-meta_output_rdf_dir: dir/output/meta/rdf # meta_output_dir + "/rdf"; Folder where RDF files are saved. Since these files are the heaviest, it is sometimes convenient to save them on HDD, while the triplestore needs to be on SSD for its efficient operation
-meta_silencer: '["author", "editor", "publisher"]' # Fields in the silencer list are only updated if there is no information on that field in OpenCitations Meta. For example, if 'author' is specified, any new authors are not added to the list if authors are already present.
-meta_normalize_titles: 1 # default = 1
-meta_use_doi_api_services: False # If True, use the DOI API service to check if DOIs are valid
-meta_virtuoso_full_text_search: True
-meta_blazegraph_full_text_search: False
-meta_fuseki_full_text_search: False
-meta_provenance_endpoints: []
+# 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks 
+validation_type: 2
+# line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
+validation_elimination: "line"
+
+# META
+
+# directory where the meta_config.yaml will be generated
+meta_config_path: "dir/temp/meta_config.yaml"
+# directory with the output of the validated bibliographic metadata, leave as is
 meta_input_csv_dir: dir/temp/meta-validated
+# directory where the output of META will be stored
 meta_base_output_dir: dir/output/meta
+# endpoint URL to load the output RDF
+meta_triplestore_url: http://localhost:8888/sparql 
+# endpoint URL for PROV
+meta_provenance_triplestore_url: http://localhost:8888/sparql 
+# The base URI of entities on Meta. This setting can be safely left as is
+meta_base_iri: https://w3id.org/oc/meta/ 
+# URL where the namespaces and prefixes used in the OpenCitations Data Model are defined. This setting can be safely left as is
+meta_context_path: https://w3id.org/oc/corpus/context.json 
+# A URI string representing the provenance agent which is considered responsible for the RDF graph manipulation
+meta_resp_agent: https://w3id.org/oc/meta/prov/pa/1 
+# Data source URL. This setting can be safely left as is
+meta_source: https://api.crossref.org/ 
+# output_dir + "/meta"
+meta_output_dir: dir/output/meta
+# redis container name for META
+meta_redis_container: "redis"
+# default = "localhost"
+meta_redis_host: "localhost"
+# default = "6379"
+meta_redis_port: "6379" 
+# default = "0"
+meta_redis_db: "0" 
+# default = 1
+meta_redis_cache_db: 1 
+# A prefix for the sequential number in entities’ URIs. This setting can be safely left as is
+meta_supplier_prefix: "060" 
+# If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
+meta_rdf_output_in_chunks: False 
+# Number of cores to devote to the Meta process
+meta_workers_number: 16 
+# Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
+meta_dir_split_number: 10000 
+# Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
+meta_items_per_file: 1000 
+# This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
+meta_default_dir: "_" 
+# Needs to be True in order to run validation, convert to CSV and load into redis for oc_index. If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
+meta_generate_rdf_files: True 
+# If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
+meta_zip_output_rdf: True 
+# meta_output_dir + "/rdf"; Folder where RDF files are saved. Since these files are the heaviest, it is sometimes convenient to save them on HDD, while the triplestore needs to be on SSD for its efficient operation
+meta_output_rdf_dir: dir/output/meta/rdf 
+# Fields in the silencer list are only updated if there is no information on that field in OpenCitations Meta. For example, if 'author' is specified, any new authors are not added to the list if authors are already present.
+meta_silencer: '["author", "editor", "publisher"]' 
+# default = 1
+meta_normalize_titles: 1 
+# If True, use the DOI API service to check if DOIs are valid
+meta_use_doi_api_services: False 
+# leave as True, since Virtuoso is used for META now
+meta_virtuoso_full_text_search: True
+# outdated, leave as is
+meta_blazegraph_full_text_search: False
+# outdated, leave as is
+meta_fuseki_full_text_search: False
+# outdated, leave as is
+meta_provenance_endpoints: []
+# outdated, leave as is
+meta_cache_endpoint: ""
+# outdated, leave as is
+meta_cache_update_endpoint: ""
+# outdated, leave as is
+meta_graphdb_connector_name: ""
 
-# Virtuoso for PROV
-prov_virtuoso_custom: 1 # default: 1. set to 0 to disable customised usage.
+# PROV - Virtuoso settings
 
-prov_virtuoso_bulk_load: 0 # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
-prov_virtuoso_bulk_load_dir: "/input" # directory containing n-quads to populate PROV in Virtuoso with n-quads. MUST BE ACCESSIBLE BY VIRTUOSO BY ADDING TO dirsallowed IN virtuoso-data-virtuoso.ini!!!
-prov_virtuoso_dump: 0 #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
-prov_virtuoso_dump_dir: "/output" # directory for n-quad dump containing PROV from Virtuoso
-prov_virtuoso_mount_volume: "dir\\input\\virtuoso:/input dir\\output\\n-quads-dump:/output" # please consult virtuoso_utilities' README.md for usage and default values
+# default: 1. set to 0 to disable customised usage.
+prov_virtuoso_custom: 1 
 
-prov_virtuoso_name: "virtuoso" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_http_port: "8888" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_isql_port: "1111" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_data_dir: "" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_dba_username: "dba" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_dba_password: "dba" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_dump_file_limit: 100000000 #maximum length of dump files in bytes
-prov_virtuoso_dump_compression: 1 # default: 1. set to 0 to disable gzip compression
-prov_virtuoso_network: "" # please consult virtuoso_utilities' README.md for usage and default values
-prov_virtuoso_memory: "16g" # defaults to 2/3 of host memory with psutil installed, otherwise 2g. 
-prov_virtuoso_detach: 1 # default: 1. Run container in detached mode.
-prov_virtuoso_wait_ready: 1 # default: 1. Wait until Virtuoso is ready to accept connections.
-prov_virtuoso_enable_write_permissions: 1 # default: 1. Makes database publicly writable.
+# default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
+prov_virtuoso_bulk_load: 0 
+# internal container directory containing n-quads to populate PROV in Virtuoso with n-quads.
+prov_virtuoso_bulk_load_dir: "/input" 
+#default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
+prov_virtuoso_dump: 0 
+# internal container directory for n-quad dump containing PROV from Virtuoso
+prov_virtuoso_dump_dir: "/output" 
+# mounting volumes for bulk loading n-quads to Virtuoso and n-quad dumping of PROV from Virtuoso
+# formatting:
+# "nquads_dir\\virtuoso:/prov_virtuoso_bulk_load_dir dump_dir:/prov_virtuoso_dump_dir"
+prov_virtuoso_mount_volume: "dir\\input\\virtuoso:/input dir\\output\\n-quads-dump:/output"
+
+# name for the Virtuoso container
+prov_virtuoso_name: "virtuoso"
+# http port for exposing the containerised Virtuoso instance
+prov_virtuoso_http_port: "8888"
+# isql port for exposing the containerised Virtuoso instance
+prov_virtuoso_isql_port: "1111"
+# default: "./virtuoso-data". Host directory to mount as Virtuoso data directory.
+prov_virtuoso_data_dir: ""
+# username for the db admin for the containerised Virtuoso instance
+prov_virtuoso_dba_username: "dba"
+# password for the db admin for the containerised Virtuoso instance
+prov_virtuoso_dba_password: "dba"
+# maximum length of dump files in bytes
+prov_virtuoso_dump_file_limit: 100000000 
+# default: 1. set to 0 to disable gzip compression
+prov_virtuoso_dump_compression: 1 
+# default: "". Docker network to connect the container to (must be preexisting). Allows for connecting the Virtuoso container to a specific Docker network for communication with other containers.
+prov_virtuoso_network: ""
+# defaults to 2/3 of host memory with psutil installed, otherwise 2g. 
+prov_virtuoso_memory: "16g" 
+# default: 1. Run container in detached mode.
+prov_virtuoso_detach: 1 
+# default: 1. Wait until Virtuoso is ready to accept connections.
+prov_virtuoso_wait_ready: 1 
+# default: 1. Makes database publicly writable.
+prov_virtuoso_enable_write_permissions: 1 
+# default: 1. Force removal of existing container with the same name.
 prov_virtuoso_force_remove: 1
 
 # INDEX
-index_service: "COCI" # opencitations collection of the datasource
-index_cnc_processes: 1 # number of parallel processes to use for cnc
-index_date: "20251014" # YYYYMMDD date of the publication date of the dump
-index_dumpindex_workers: 1 # number of workers for dump_index, default - 1, recommended max 6
+
+# opencitations collection of the datasource
+index_service: "COCI" 
+# number of parallel processes to use for cnc
+index_cnc_processes: 1 
+# YYYYMMDD date of the publication date of the dump
+index_date: "20251014" 
+# number of workers for dump_index, default - 1, recommended max 6
+index_dumpindex_workers: 1 
+
+# INDEX - INFORMATION FOR CONFIG.INI
+index_identifier_pmid: oc.index.identifier.pmid:PMIDManager
+index_identifier_doi: oc.index.identifier.doi:DOIManager
+index_identifier_omid: oc.index.identifier.omid:OMIDManager
+
+# If set to 1 the logs will be printed in console, by default
+# they are only saved in ~/.opencitations/index/logs
+index_logging_verbose: 1
+
+# Redis data source info
+index_redis_host: 127.0.0.1
+index_redis_port: 6379
+index_redis_batch_size: 10000
+
+# ORCID API key to be used to query the ORCID API
+index_cnc_orcid: 
+# Lookup table for oci encoding
+index_cnc_lookup: ~/.opencitations/index/lookup.csv
+# True whenever you want to use the api in the resource finder
+index_cnc_use_api: false
+# Comma seperated available services
+index_cnc_services: COCI,POCI,CROCI,DOCI,JOCI,INDEX
+# Available identifiers type
+index_cnc_identifiers: doi,pmid,omid
+# All BR IDs handled in META
+index_cnc_br_ids: doi,issn,isbn,pmid,pmcid,url,wikidata,wikipedia,jid,arxiv,openalex
+# All RA IDs handled in META
+index_cnc_ra_ids: crossref,orcid,viaf,wikidata,ror
+# Redis all citations in OpenCitations INDEX – <CITED-OMID>:[ <CITING-OMID-1>, <CITING-OMID-2>, ..., <CITING-OMID-N> ]
+index_cnc_db_cits: 8
+# Redis OMID DB – <OMID>:<ANYID> (general index for OMIDs)
+index_cnc_db_omid: 9
+# Redis BR DB – <ANYID>:<OMID> (ANYID is any BR identifier)
+index_cnc_db_br: 10
+# Redis RA DB – <ANYID>:<OMID> (ANYID is any RA identifier)
+index_cnc_db_ra: 11
+
+# Prefix to use for creating the OCIs
+index_cnc_service_template_prefix: 
+# Parser to use for reading citation data. It should be a class extending
+# oc.index.parsing.base.CitationParser the format accepted is package:class
+index_cnc_service_template_parser: 
+# The URL of the source from where the citation data have been extracted
+index_cnc_service_template_source: 
+# The URL of the agent providing or processing the citation data
+index_cnc_service_template_agent: 
+# The base URL of the dataset
+index_cnc_service_template_baseurl: 
+# The base URL of the identifier of citing and cited entities, if any
+index_cnc_service_template_idbaseurl: 
+# The name of the service that will made available the  citation data.
+index_cnc_service_template_service: 
+# The type of datasource to use. The available datasources are csv and redis
+index_cnc_service_template_datasource: 
+# The identifier used for cited and citing
+index_cnc_service_template_identifier:
+
+index_index_prefix:
+index_index_parser: oc.index.parsing.index:INDEXParser
+index_index_validator: oc.index.validate.index:INDEXValidator
+index_index_source: https://api.crossref.org/snapshots/monthly/2022/10
+index_index_agent: https://w3id.org/oc/index/prov/pa/1
+index_index_baseurl: https://w3id.org/oc/index/
+index_index_idbaseurl: https://w3id.org/oc/meta/
+index_index_service: OpenCitations Index
+index_index_datasource: redis
+index_index_db: 12
+index_index_identifier: omid
+
+index_oroci_parser: oc.index.parsing.openaire:OpenaireParser
+index_oroci_validator: 
+index_oroci_source: https://doi.org/10.5281/zenodo.7845968
+index_oroci_ocdump: 
+index_oroci_service: "OpenCitations Index: OROCI"
+
+index_coci_parser: oc.index.parsing.crossref:CrossrefParser
+index_coci_source: https://api.crossref.org/snapshots/monthly/2023/09/all.json.tar.gz
+index_coci_ocdump: https://doi.org/10.6084/m9.figshare.6741422.v19
+index_coci_service: "OpenCitations Index: COCI"
+index_coci_identifier: doi
+
+index_joci_source: https://api.japanlinkcenter.org/
+
+index_poci_parser: oc.index.parsing.nih:NIHParser
+index_poci_source: https://doi.org/10.35092/yhjc.c.4586573
+index_poci_ocdump: https://doi.org/10.6084/m9.figshare.21776351.v1
+index_poci_service: "OpenCitations Index: POCI"
+index_poci_identifier: pmid
+
+index_croci_parser: oc.index.parsing.crowdsourced:CrowdsourcedParser
+index_croci_source: https://doi.org/10.5281/zenodo.3832935
+index_croci_ocdump: https://doi.org/10.5281/zenodo.3832935
+index_croci_service: "OpenCitations Index: CROCI"
+index_croci_identifier: doi
+
+index_doci_parser: oc.index.parsing.datacite:DataciteParser
+index_doci_source: https://archive.org/details/datacite_dump_20211022
+index_doci_ocdump: https://doi.org/10.6084/m9.figshare.21707342.v1
+index_doci_service: "OpenCitations Index: DOCI"
+index_doci_identifier: doi
