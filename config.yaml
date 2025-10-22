@@ -81,7 +81,7 @@ meta_dir_split_number: 10000
 meta_items_per_file: 1000 
 # This value is used as the default prefix if no prefix is specified. It is a deprecated parameter, valid only for backward compatibility and can safely be ignored
 meta_default_dir: "_" 
-# Needs to be True in order to run validation, convert to CSV and load into redis for oc_index. If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
+# NEEDS TO BE True in order to run validation, convert to CSV and load into redis for oc_index. If True, generate and store the RDF files during the meta process. If False, RDF files will not be generated.
 meta_generate_rdf_files: True 
 # If True, the folder specified in output_rdf_dir must contain zipped JSON files, and the output will be zipped 
 meta_zip_output_rdf: True 
