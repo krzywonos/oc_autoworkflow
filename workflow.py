@@ -8,7 +8,6 @@ import socket;
 import subprocess;
 import time;
 import yaml;
-import webbrowser;
 from configparser import ConfigParser;
 from multiprocessing import freeze_support;
 from oc_validator.main import Validator;
@@ -16,13 +15,12 @@ from pathlib import Path;
 from ruamel.yaml import YAML;
 from ruamel.yaml.comments import CommentedMap;
 from urllib.parse import urlparse;
-
+ 
 # CONFIG.YAML VARIABLES
-input_dir = None;
-temp_dir = None;
-output_dir = None;
+input_dir = "dir/input";
+temp_dir = "dir/temp";
+output_dir = "dir/output";
 preprocess_dir = None;
-oc_validator_dir = None;
 oc_virtuoso_utilities_dir = None;
 oc_meta_dir = None;
 oc_meta_dir_error = None;
@@ -32,8 +30,6 @@ meta2redis_dir = None;
 oc_index_config_dir = None;
 oc_index_cnc_dir = None;
 oc_index_dumpindex_dir = None;
-upload_dir = None;
-publication_dir = None;
 oc_index_config_dir = None;
 fuseki_image = None;
 redis_image = None;
