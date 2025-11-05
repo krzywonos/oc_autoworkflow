@@ -45,3 +45,7 @@ Afterwards, run the script using:
 `python workflow.py`
 Most of the "tasks" that combined create this workflow utilise pre-existing OpenCitations tools and scripts, that print information regarding their runtime in console.
 You can also open *Luigi*'s web interface at *localhost:8082* for more information regarding the tasks running as part of the script.
+
+The script can also be used with a local scheduler, by using:
+`python workflow.py --local-scheduler`
+Keep in mind that without central scheduler, Luigi's web application is not available.

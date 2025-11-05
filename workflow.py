@@ -1,4 +1,5 @@
 # IMPORTS
+import argparse;
 import json;
 import luigi;
 import os;
@@ -14,6 +15,7 @@ from oc_validator.main import Validator;
 from pathlib import Path;
 from ruamel.yaml import YAML;
 from ruamel.yaml.comments import CommentedMap;
+from typing import Callable;
 from urllib.parse import urlparse;
  
 # CONFIG.YAML VARIABLES
@@ -235,7 +237,7 @@ def expect_in(
     errors: list,
     allowed: set | None = None,
     cast: type | None = None,
-    transform: callable | None = None,
+    transform: Callable | None = None,
     default=None,
 ):
     """
@@ -290,6 +292,37 @@ def expect_in(
 
     cfg[name] = val;
     return val;
+
+
+def clean_directory_except(base_dir: str | Path, keep: list[str]):
+    """
+    Delete everything inside `base_dir` except for specified subfolders or files.
+
+    Parameters
+    ----------
+    base_dir : str | Path
+        The directory whose contents will be cleaned.
+    keep : list[str]
+        Names (not full paths) of files or subdirectories to keep.
+
+    Example
+    -------
+    >>> clean_directory_except("dir/temp", keep=["index-preprocessed", "meta-preprocessed"])
+    """
+    base = Path(base_dir)
+    if not base.is_dir():
+        raise NotADirectoryError(base)
+
+    for entry in base.iterdir():
+        if entry.name in keep:
+            continue  # skip anything we want to preserve
+        if entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            try:
+                entry.unlink()
+            except FileNotFoundError:
+                pass
 
 # LUIGI TASKS
 class LoadConfig(luigi.Task):
@@ -1059,6 +1092,9 @@ class CleanUp(luigi.Task):
     def requires(self):
         return DatabaseSwitchOn(param = "dir/temp/dbswitchon.txt");
 
+    def output(self):
+        return luigi.LocalTarget(self.param)
+
     def run(self):
         # turn off redis
         docker_rm(meta_redis_container);
@@ -1066,17 +1102,37 @@ class CleanUp(luigi.Task):
         docker_rm(prov_virtuoso_name);
 
         # delete temp_dir
-        #shutil.rmtree(temp_dir);
-        #TODO: delete unnecessary output files
+        shutil.rmtree(temp_dir);
+        # delete unnecessary file in output_dir
+        clean_directory_except(
+            output_dir,
+            keep = ["n-quads-dump", "ocmetacsv_output", "rdf"] #TODO: add index output here
+        );
+        # delete unnecessary runtime files from the main folder
+        shutil.rmtree("storage");
+        Path("failed_queries.txt").unlink(missing_ok=True);
+        Path("gently_run.bat").unlink(missing_ok=True);
+        Path("gently_stop.bat").unlink(missing_ok=True);
+        Path("meta_br.csv").unlink(missing_ok=True);
+        Path("meta_ra.csv").unlink(missing_ok=True);
+        Path("ts_upload_cache.json").unlink(missing_ok=True);
+        # delete Virtuoso data?
+        # shutil.rmtree(virtuoso-data);
 
         with self.output().open("w") as f:
             f.write("ok\n");
 
 # MAIN
 if __name__ == "__main__":
-    # webbrowser.open("https://localhost:8082");
-
     freeze_support();
+
+    parser = argparse.ArgumentParser(add_help=True);
+    parser.add_argument(
+        "--local-scheduler",
+        action="store_true",
+        help="Use Luigi's local in-process scheduler instead of a central luigid.",
+    );
+    args, _unknown = parser.parse_known_args();
 
     tasks_to_run = [
         LoadConfig(),
@@ -1086,17 +1142,17 @@ if __name__ == "__main__":
         OCMeta(),
         OCMetaCsv(),
         Meta2Redis(),
-        OCIndex(),
-        Dump(),
+        #OCIndex(),
+        #Dump(),
         CleanUp()
     ];
 
     ok = luigi.build(
         tasks_to_run,
-        workers=1,
-        local_scheduler=False,
-        scheduler_host="127.0.0.1",
-        scheduler_port=8082,
-        detailed_summary=True
+        workers = 1,
+        local_scheduler = bool(args.local_scheduler),
+        scheduler_host = "127.0.0.1",
+        scheduler_port = 8082,
+        detailed_summary = True
     );
     raise SystemExit(0 if ok else 1);
