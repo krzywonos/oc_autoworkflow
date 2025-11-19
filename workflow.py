@@ -241,7 +241,7 @@ def expect_in(
     default=None,
 ):
     """
-    Validate and normalize a configuration entry.
+    Validate and normalise a configuration entry.
 
     Parameters
     ----------
@@ -277,7 +277,7 @@ def expect_in(
         try:
             val = cast(val);
         except Exception as e:
-            errors.append(f"{name}: invalid type/value {val!r} (expected {cast.__name__}) — {e}");
+            errors.append(f"{name}: invalid type/value {val!r} (expected {cast.__name__}) - {e}");
             return None;
 
     if transform is not None:
@@ -294,7 +294,10 @@ def expect_in(
     return val;
 
 
-def clean_directory_except(base_dir: str | Path, keep: list[str]):
+def clean_directory_except(
+        base_dir: str | Path, 
+        keep: list[str]
+):
     """
     Delete everything inside `base_dir` except for specified subfolders or files.
 
@@ -849,7 +852,7 @@ class OCMetaCsv(luigi.Task):
 
     def run(self):
         # running oc_meta_val
-        cmd = ["python", oc_meta_val_dir, meta_output_dir + "/csv", meta_config_path];
+        cmd = ["python", oc_meta_val_dir, meta_config_path];
         run(cmd);
         
         # run redis for oc_meta_csv
@@ -957,72 +960,7 @@ class OCIndex(luigi.Task):
             "index_index_service": ("INDEX", "service"),
             "index_index_datasource": ("INDEX", "datasource"),
             "index_index_db": ("INDEX", "db"),
-            "index_index_identifier": ("INDEX", "identifier"),
-
-            # COCI
-            "index_coci_prefix": ("COCI", "prefix"),
-            "index_coci_parser": ("COCI", "parser"),
-            "index_coci_validator": ("COCI", "validator"),
-            "index_coci_source": ("COCI", "source"),
-            "index_coci_agent": ("COCI", "agent"),
-            "index_coci_baseurl": ("COCI", "baseurl"),
-            "index_coci_idbaseurl": ("COCI", "idbaseurl"),
-            "index_coci_service": ("COCI", "service"),
-            "index_coci_datasource": ("COCI", "datasource"),
-            "index_coci_db": ("COCI", "db"),
-            "index_coci_identifier": ("COCI", "identifier"),
-
-            # POCI
-            "index_poci_prefix": ("POCI", "prefix"),
-            "index_poci_parser": ("POCI", "parser"),
-            "index_poci_validator": ("POCI", "validator"),
-            "index_poci_source": ("POCI", "source"),
-            "index_poci_agent": ("POCI", "agent"),
-            "index_poci_baseurl": ("POCI", "baseurl"),
-            "index_poci_idbaseurl": ("POCI", "idbaseurl"),
-            "index_poci_service": ("POCI", "service"),
-            "index_poci_datasource": ("POCI", "datasource"),
-            "index_poci_db": ("POCI", "db"),
-            "index_poci_identifier": ("POCI", "identifier"),
-
-            # CROCI 
-            "index_croci_prefix": ("CROCI", "prefix"),
-            "index_croci_parser": ("CROCI", "parser"),
-            "index_croci_validator": ("CROCI", "validator"),
-            "index_croci_source": ("CROCI", "source"),
-            "index_croci_agent": ("CROCI", "agent"),
-            "index_croci_baseurl": ("CROCI", "baseurl"),
-            "index_croci_idbaseurl": ("CROCI", "idbaseurl"),
-            "index_croci_service": ("CROCI", "service"),
-            "index_croci_datasource": ("CROCI", "datasource"),
-            "index_croci_db": ("CROCI", "db"),
-            "index_croci_identifier": ("CROCI", "identifier"),
-
-            # DOCI
-            "index_doci_prefix": ("DOCI", "prefix"),
-            "index_doci_parser": ("DOCI", "parser"),
-            "index_doci_validator": ("DOCI", "validator"),
-            "index_doci_source": ("DOCI", "source"),
-            "index_doci_agent": ("DOCI", "agent"),
-            "index_doci_baseurl": ("DOCI", "baseurl"),
-            "index_doci_idbaseurl": ("DOCI", "idbaseurl"),
-            "index_doci_service": ("DOCI", "service"),
-            "index_doci_datasource": ("DOCI", "datasource"),
-            "index_doci_db": ("DOCI", "db"),
-            "index_doci_identifier": ("DOCI", "identifier"),
-
-            # JOCI
-            "index_joci_prefix": ("JOCI", "prefix"),
-            "index_joci_parser": ("JOCI", "parser"),
-            "index_joci_validator": ("JOCI", "validator"),
-            "index_joci_source": ("JOCI", "source"),
-            "index_joci_agent": ("JOCI", "agent"),
-            "index_joci_baseurl": ("JOCI", "baseurl"),
-            "index_joci_idbaseurl": ("JOCI", "idbaseurl"),
-            "index_joci_service": ("JOCI", "service"),
-            "index_joci_datasource": ("JOCI", "datasource"),
-            "index_joci_db": ("JOCI", "db"),
-            "index_joci_identifier": ("JOCI", "identifier")
+            "index_index_identifier": ("INDEX", "identifier")
         }
 
         # application of mapped overrides
@@ -1103,11 +1041,13 @@ class CleanUp(luigi.Task):
 
         # delete temp_dir
         shutil.rmtree(temp_dir);
+
         # delete unnecessary file in output_dir
         clean_directory_except(
             output_dir,
             keep = ["n-quads-dump", "ocmetacsv_output", "rdf"] #TODO: add index output here
         );
+
         # delete unnecessary runtime files from the main folder
         shutil.rmtree("storage");
         Path("failed_queries.txt").unlink(missing_ok=True);
@@ -1116,6 +1056,7 @@ class CleanUp(luigi.Task):
         Path("meta_br.csv").unlink(missing_ok=True);
         Path("meta_ra.csv").unlink(missing_ok=True);
         Path("ts_upload_cache.json").unlink(missing_ok=True);
+
         # delete Virtuoso data?
         # shutil.rmtree(virtuoso-data);
 
@@ -1144,7 +1085,7 @@ if __name__ == "__main__":
         Meta2Redis(),
         #OCIndex(),
         #Dump(),
-        CleanUp()
+        #CleanUp()
     ];
 
     ok = luigi.build(

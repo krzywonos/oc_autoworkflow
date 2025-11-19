@@ -72,7 +72,7 @@ meta_supplier_prefix: "060"
 # If True, save all the graphset and provset in one file, and save all the graphset on the triplestore. 
 meta_rdf_output_in_chunks: False 
 # Number of cores to devote to the Meta process
-meta_workers_number: 16 
+meta_workers_number: 1
 # Number of files per folder. dir_split_number's value must be multiple of items_per_file's value. This parameter is useful only if you choose to return the output in json-ld format
 meta_dir_split_number: 10000 
 # Number of items per file. This parameter is useful only if you choose to return the output in json-ld format
