@@ -3,34 +3,35 @@
 
 ## Prerequisites
 ### To install:
-Python 3.12.4<
-[Luigi](https://github.com/spotify/luigi)
-[Pandas](https://github.com/pandas-dev/pandas)
-[PYYaml](https://github.com/yaml/pyyaml)
-[ruamel.yaml](https://github.com/commx/ruamel-yaml)
-[oc_ocdm](https://github.com/opencitations/oc_ocdm)
-[oc_validator](https://github.com/opencitations/oc_validator)
-[virtuoso_utilities](https://github.com/opencitations/virtuoso_utilities)
-[oc_index](https://github.com/opencitations/index)
-[oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)]()
+- Python 3.12.4<
+- [Luigi](https://github.com/spotify/luigi)
+- [Pandas](https://github.com/pandas-dev/pandas)
+- [PYYaml](https://github.com/yaml/pyyaml)
+- [ruamel.yaml](https://github.com/commx/ruamel-yaml)
+- [libnotify-bin]() if using Linux
+- [oc_ocdm](https://github.com/opencitations/oc_ocdm)
+- [oc_validator](https://github.com/opencitations/oc_validator)
+- [virtuoso_utilities](https://github.com/opencitations/virtuoso_utilities)
+- [oc_index](https://github.com/opencitations/index)
+- [oc_meta dependencies(redis, SPARQLWrapper, tqdm, yaml, pebble, time_agnostic_library)]()
 
-[OpenLink Virtuoso](https://github.com/openlink/virtuoso-opensource) installed
+- [OpenLink Virtuoso](https://github.com/openlink/virtuoso-opensource) installed
 
-[Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
 
 ### Cloned repositories:
-[oc_meta](https://github.com/opencitations/oc_meta) code stored locally
-[oc_index](https://github.com/opencitations/index) code stored locally
-[virtuoso_utilities](https://github.com/opencitations/virtuoso_utilities) stored locally
+- [oc_meta](https://github.com/opencitations/oc_meta) code stored locally
+- [oc_index](https://github.com/opencitations/index) code stored locally, with my PR added and scripts/Redis folder removed
+- [virtuoso_utilities](https://github.com/opencitations/virtuoso_utilities) stored locally
 
 ## Installation
 **oc_autoworkflow** is a stand-alone script called with a command-line interface.
 It's recommended, but not necessary, to keep the three OpenCitations repositories mentioned in the previous sections in parallel folders, eg.
-> opencitations
-> opencitations/oc_autoworkflow
-> opencitations/oc_meta
-> opencitations/index
-> opencitations/virtuoso_utilities
+> - opencitations
+> - opencitations/oc_autoworkflow
+> - opencitations/oc_meta
+> - opencitations/index
+> - opencitations/virtuoso_utilities
 
 ## Usage
 
