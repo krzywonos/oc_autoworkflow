@@ -926,7 +926,8 @@ class Meta2Redis(luigi.Task):
     param = luigi.PathParameter(default = "dir/temp/meta2redis.txt");
 
     def requires(self):
-        return OCMetaCsv();
+        #return OCMetaCsv(param="dir/output/meta/ocmetacsv_output/success.txt");
+        return None;
 
     def output(self):
         return luigi.LocalTarget(self.param)
@@ -1033,7 +1034,7 @@ class OCIndexCNC(luigi.Task):
             ini.write(f, space_around_delimiters=False)
 
         # run cnc.py
-        cmd = ["python", oc_index_cnc_dir, "--input", input_dir + "/index", "--intype", "CSV", "-c", "INDEX", "--service", index_service, "--output", temp_dir + "/index_cnc", "--processes", str(index_cnc_processes)];
+        cmd = ["python", oc_index_cnc_dir, "--input", input_dir + "/index", "--intype", "CSV", "-c", "INDEX", "-s", index_service, "--output", temp_dir + "/index_cnc", "--processes", str(index_cnc_processes)];
         run(cmd);
 
         with self.output().open("w") as f:
@@ -1052,11 +1053,7 @@ class OCIndexCits2Redis(luigi.Task):
         # run cits2redis.py
         now = datetime.now()
         dump = "dir/temp/index_cnc/ocindex-data/data/rdf/" + now.strftime("%Y") + "/" + now.strftime("%m");
-        cmd =["python" + oc_index_cits2redis_dir + "--dump" + dump + "--intype" + "TTL"];
-        run(cmd);
-
-        # run dump_index.py
-        cmd = ["python", oc_index_dumpindex_dir, "--date", index_date, "--workers", str(index_dumpindex_workers)];
+        cmd =["python", oc_index_cits2redis_dir, "--dump", dump, "--intype", "TTL"];
         run(cmd);
 
         with self.output().open("w") as f:
@@ -1066,20 +1063,14 @@ class OCIndexDump(luigi.Task):
     param = luigi.PathParameter(default = "dir/output/index/success.txt");
 
     def requires(self):
-        return OCIndexCits2Redis(param = "dir/temp/index_cits2redis.txt");
+        return OCIndexCits2Redis(param = "dir/temp/index_cits2redis/success.txt");
 
     def output(self):
         return luigi.LocalTarget(self.param);
 
     def run(self):
-        # run cits2redis.py
-        now = datetime.now()
-        dump = "dir/temp/index_cnc/ocindex-data/data/rdf/" + now.strftime("%Y") + "/" + now.strftime("%m");
-        cmd =["python" + oc_index_cits2redis_dir + "--dump" + dump + "--intype" + "TTL"];
-        run(cmd);
-
         # run dump_index.py
-        cmd = ["python", oc_index_dumpindex_dir, "--date", index_date, "--workers", str(index_dumpindex_workers)];
+        cmd = ["python", oc_index_dumpindex_dir, "-d", index_date, "--workers", str(index_dumpindex_workers)];
         run(cmd);
 
         with self.output().open("w") as f:
@@ -1187,7 +1178,7 @@ if __name__ == "__main__":
         OCIndexCits2Redis(),
         OCIndexDump(),
         VirtuosoDump(),
-        #CleanUp()
+        CleanUp()
     ];
 
     try:
@@ -1201,12 +1192,12 @@ if __name__ == "__main__":
         );
 
         if ok:
-            notify("Workflow Status", "Workflow finished successfully.", True);
+            notify("Workflow Status", "Workflow finished.", True);
             raise SystemExit(0);
         else:
-            notify("Workflow Status", "Workflow failed.", False);
+            notify("Workflow Status", "Workflow finished.", False);
             raise SystemExit(1);
 
     except Exception as e:
-        notify("Workflow Status", f"Workflow failed:\n{str(e)}", False);
+        notify("Workflow Status", f"Workflow finished:\n{str(e)}", False);
         raise;
