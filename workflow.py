@@ -1135,7 +1135,7 @@ class CleanUp(luigi.Task):
         # delete unnecessary file in output_dir
         clean_directory_except(
             output_dir,
-            keep = ["n-quads-dump", "ocmetacsv_output", "rdf"] #TODO: add index output here
+            keep = ["n-quads-dump", "ocmetacsv_output", "rdf", "index"]
         );
 
         # delete unnecessary runtime files from the main folder
