@@ -1,15 +1,18 @@
 # IMPORTS
 import argparse;
+import ctypes;
 import json;
 import luigi;
 import os;
 import pandas as pd;
+import platform;
 import shutil;
 import socket;
 import subprocess;
 import time;
 import yaml;
 from configparser import ConfigParser;
+from datetime import datetime;
 from multiprocessing import freeze_support;
 from oc_validator.main import Validator;
 from pathlib import Path;
@@ -31,6 +34,7 @@ oc_meta_csv_dir = None;
 meta2redis_dir = None;
 oc_index_config_dir = None;
 oc_index_cnc_dir = None;
+oc_index_cits2redis_dir = None;
 oc_index_dumpindex_dir = None;
 oc_index_config_dir = None;
 fuseki_image = None;
@@ -293,6 +297,37 @@ def expect_in(
     cfg[name] = val;
     return val;
 
+def notify(title: str, message: str, success: bool = True):
+    """
+    Creates a system notification pop-up with the result of the workflow.
+    
+    Parameters
+    ----------
+    title: str
+        Title of the pop-up.
+    message: str
+        Message of the pop-up.
+    success: bool, optional
+        Boolean indicating whether the workflow has completed successfully.
+    """
+    system = platform.system();
+
+    if system == "Windows":
+        icon = 0x40 if success else 0x10  # Info / Error
+        ctypes.windll.user32.MessageBoxW(0, message, title, icon);
+
+    elif system == "Darwin":  # macOS
+        script = f'display notification "{message}" with title "{title}"';
+        subprocess.run(["osascript", "-e", script]);
+
+    elif system == "Linux":
+        icon = "dialog-information" if success else "dialog-error";
+        subprocess.run(["notify-send", title, message, "-i", icon]);
+
+    else:
+        print(f"{title}: {message}");
+
+
 
 def clean_directory_except(
         base_dir: str | Path, 
@@ -312,77 +347,67 @@ def clean_directory_except(
     -------
     >>> clean_directory_except("dir/temp", keep=["index-preprocessed", "meta-preprocessed"])
     """
-    base = Path(base_dir)
+    base = Path(base_dir);
     if not base.is_dir():
-        raise NotADirectoryError(base)
+        raise NotADirectoryError(base);
 
     for entry in base.iterdir():
         if entry.name in keep:
-            continue  # skip anything we want to preserve
+            continue;  # skip anything we want to preserve
         if entry.is_dir():
-            shutil.rmtree(entry, ignore_errors=True)
+            shutil.rmtree(entry, ignore_errors=True);
         else:
             try:
-                entry.unlink()
+                entry.unlink();
             except FileNotFoundError:
-                pass
+                pass;
+
+def load_config():
+    """
+    Validation of the main configuration file and loading its values.
+    """
+    # path to YAML
+    CONFIG_PATH = Path("config.yaml");
+    # load
+    cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {};
+    errors = [];
+
+    validation_type = expect_in(cfg, "validation_type", errors, allowed = {0, 1, 2}, cast = int);
+    validation_elimination = expect_in(cfg, "validation_elimination", errors, allowed = {"file", "line", "workflow"}, transform=lambda s: str(s).lower());
+    
+    meta_rdf_output_in_chunks = expect_in(cfg, "meta_rdf_output_in_chunks", errors, allowed = {0, 1}, cast = int);
+    meta_workers_number = expect_in(cfg, "meta_workers_number", errors, cast = int);
+    meta_dir_split_number = expect_in(cfg, "meta_dir_split_number", errors, cast = int);
+    meta_items_per_file = expect_in(cfg, "meta_items_per_file", errors, cast = int);
+    meta_generate_rdf_files = expect_in(cfg, "meta_generate_rdf_files", errors, allowed = {0, 1}, cast = int);
+    meta_zip_output_rdf = expect_in(cfg, "meta_zip_output_rdf", errors, allowed = {0, 1}, cast = int);
+    meta_normalize_titles = expect_in(cfg, "meta_normalize_titles", errors, allowed = {0, 1}, cast = int);
+    meta_use_doi_api_services = expect_in(cfg, "meta_use_doi_api_services", errors, allowed = {0, 1}, cast = int);
+
+    prov_virtuoso_bulk_load = expect_in(cfg, "prov_virtuoso_bulk_load", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_dump = expect_in(cfg, "prov_virtuoso_dump", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_dump_file_limit = expect_in(cfg, "prov_virtuoso_dump_file_limit", errors, cast = str);
+    prov_virtuoso_dump_compression = expect_in(cfg, "prov_virtuoso_dump_compression", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_custom = expect_in(cfg, "prov_virtuoso_custom", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_detach = expect_in(cfg, "prov_virtuoso_detach", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_wait_ready = expect_in(cfg, "prov_virtuoso_wait_ready", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_enable_write_permissions = expect_in(cfg, "prov_virtuoso_enable_write_permissions", errors, allowed = {0, 1}, cast = int);
+    prov_virtuoso_force_remove = expect_in(cfg, "prov_virtuoso_force_remove", errors, allowed = {0, 1}, cast = int);
+
+    if errors:
+        raise ValueError("\n".join(errors));
+
+    for _k, _v in cfg.items():
+        globals()[_k] = _v;
+
+    print("Loaded config keys:", ", ".join(sorted(cfg.keys())));
+
 
 # LUIGI TASKS
-class LoadConfig(luigi.Task):
-    param = luigi.PathParameter(default = "dir/temp/loadconfig.txt");
-
-    def requires(self):
-        return None;
-
-    def output(self):
-        return luigi.LocalTarget(self.param);
-
-    def run(self):
-        # path to YAML
-        CONFIG_PATH = Path("config.yaml");
-        # load
-        cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {};
-        errors = [];
-
-        validation_type = expect_in(cfg, "validation_type", errors, allowed = {0, 1, 2}, cast = int);
-        validation_elimination = expect_in(cfg, "validation_elimination", errors, allowed = {"file", "line"}, transform=lambda s: str(s).lower());
-        
-        meta_rdf_output_in_chunks = expect_in(cfg, "meta_rdf_output_in_chunks", errors, allowed = {0, 1}, cast = int);
-        meta_workers_number = expect_in(cfg, "meta_workers_number", errors, cast = int);
-        meta_dir_split_number = expect_in(cfg, "meta_dir_split_number", errors, cast = int);
-        meta_items_per_file = expect_in(cfg, "meta_items_per_file", errors, cast = int);
-        meta_generate_rdf_files = expect_in(cfg, "meta_generate_rdf_files", errors, allowed = {0, 1}, cast = int);
-        meta_zip_output_rdf = expect_in(cfg, "meta_zip_output_rdf", errors, allowed = {0, 1}, cast = int);
-        meta_normalize_titles = expect_in(cfg, "meta_normalize_titles", errors, allowed = {0, 1}, cast = int);
-        meta_use_doi_api_services = expect_in(cfg, "meta_use_doi_api_services", errors, allowed = {0, 1}, cast = int);
-
-        prov_virtuoso_bulk_load = expect_in(cfg, "prov_virtuoso_bulk_load", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_dump = expect_in(cfg, "prov_virtuoso_dump", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_dump_file_limit = expect_in(cfg, "prov_virtuoso_dump_file_limit", errors, cast = str);
-        prov_virtuoso_dump_compression = expect_in(cfg, "prov_virtuoso_dump_compression", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_custom = expect_in(cfg, "prov_virtuoso_custom", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_detach = expect_in(cfg, "prov_virtuoso_detach", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_wait_ready = expect_in(cfg, "prov_virtuoso_wait_ready", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_enable_write_permissions = expect_in(cfg, "prov_virtuoso_enable_write_permissions", errors, allowed = {0, 1}, cast = int);
-        prov_virtuoso_force_remove = expect_in(cfg, "prov_virtuoso_force_remove", errors, allowed = {0, 1}, cast = int);
-
-        if errors:
-            raise ValueError("\n".join(errors));
-
-        for _k, _v in cfg.items():
-            globals()[_k] = _v;
-
-        print("Loaded config keys:", ", ".join(sorted(cfg.keys())));
-
-        with self.output().open("w") as f:
-            f.write("ok\n");
 
 class Preprocess(luigi.Task):
     param1 = luigi.PathParameter(default = "dir/temp/index-preprocessed/success.txt");
     param2 = luigi.PathParameter(default = "dir/temp/meta-preprocessed/success.txt");
-
-    def requires(self):
-        return LoadConfig();
 
     def output(self):
         return [
@@ -627,7 +652,7 @@ class Validation(luigi.Task):
                     print(f"Wrote META filtered CSV: {csv_path.name} (removed {len(info['bad_rows'])} lines)");
                 else:
                     print(f"Copied META CSV without changes: {csv_path.name}");
-                df.to_csv(meta_out_dir / csv_path.name, index=False)
+                df.to_csv(meta_out_dir / csv_path.name, index=False);
 
             # INDEX
             index_out_dir.mkdir(parents=True, exist_ok=True);
@@ -639,6 +664,33 @@ class Validation(luigi.Task):
                 else:
                     print(f"Copied INDEX CSV without changes: {csv_path.name}");
                 df.to_csv(index_out_dir / csv_path.name, index=False);
+        
+        elif validation_elimination == "workflow":
+            print("Validation elimination mode: WORKFLOW");
+            errors = []
+
+            # META
+            meta_out_dir.mkdir(parents=True, exist_ok=True);
+            for csv_path, info in meta_map.items():
+                df = pd.read_csv(csv_path);
+                if info["bad_rows"]:
+                    errors.append(f"META {csv_path.name}: {len(info['bad_rows'])} bad rows")
+                else:
+                    print(f"Copied META CSV without changes: {csv_path.name}");
+                    df.to_csv(meta_out_dir / csv_path.name, index=False);
+
+            # INDEX
+            index_out_dir.mkdir(parents=True, exist_ok=True);
+            for csv_path, info in index_map.items():
+                df = pd.read_csv(csv_path);
+                if info["bad_rows"]:
+                    errors.append(f"INDEX {csv_path.name}: {len(info['bad_rows'])} bad rows");
+                else:
+                    print(f"Copied INDEX CSV without changes: {csv_path.name}");
+                    df.to_csv(index_out_dir / csv_path.name, index=False);
+
+            if errors:
+                raise RuntimeError("Validation failed:\n" + "\n".join(errors));
 
         else:
             print(f"Validation elimination mode: NONE (validation_elimination={validation_elimination!r})");
@@ -852,7 +904,7 @@ class OCMetaCsv(luigi.Task):
 
     def run(self):
         # running oc_meta_val
-        cmd = ["python", oc_meta_val_dir, meta_config_path];
+        cmd = ["python", oc_meta_val_dir, meta_output_dir + "/csv", meta_config_path];
         run(cmd);
         
         # run redis for oc_meta_csv
@@ -862,7 +914,7 @@ class OCMetaCsv(luigi.Task):
         print(f"Redis ready at redis://localhost:{meta_redis_port}");
         
         # run oc_meta_csv; have to generate rdf files during oc_meta with meta_generate_rdf_files set to 1
-        cmd = ["python", oc_meta_csv_dir, "--config", meta_config_path, "--output", meta_output_dir + "/ocmetacsv_output", "--redis-host", meta_redis_host, "--redis-port", meta_redis_port, "--redis-db", meta_redis_db];
+        cmd = ["python", oc_meta_csv_dir, "--config", meta_config_path, "-o", meta_output_dir + "/ocmetacsv_output", "--redis-host", meta_redis_host, "--redis-port", meta_redis_port, "--redis-db", meta_redis_db];
         run(cmd);
 
         docker_rm(meta_redis_container);
@@ -893,8 +945,8 @@ class Meta2Redis(luigi.Task):
         with self.output().open("w") as f:
             f.write("ok\n");
 
-class OCIndex(luigi.Task):
-    param = luigi.PathParameter(default = "dir/output/index/success.txt");
+class OCIndexCNC(luigi.Task):
+    param = luigi.PathParameter(default = "dir/temp/index_cnc/ocindex-data/success.txt");
 
     def requires(self):
         return Meta2Redis(param = "dir/temp/meta2redis.txt");
@@ -919,6 +971,9 @@ class OCIndex(luigi.Task):
 
             # LOGGING 
             "index_logging_verbose": ("logging", "verbose"),
+
+            # DUMP
+            "index_dump_output": ("dump", "output"),
 
             # REDIS
             "index_redis_host": ("redis", "host"),
@@ -978,7 +1033,26 @@ class OCIndex(luigi.Task):
             ini.write(f, space_around_delimiters=False)
 
         # run cnc.py
-        cmd = ["python", oc_index_cnc_dir, "--input", input_dir + "/index", "--intype", "CSV", "--service", index_service, "--output", output_dir + "/index", "--processes", str(index_cnc_processes)];
+        cmd = ["python", oc_index_cnc_dir, "--input", input_dir + "/index", "--intype", "CSV", "-c", "INDEX", "--service", index_service, "--output", temp_dir + "/index_cnc", "--processes", str(index_cnc_processes)];
+        run(cmd);
+
+        with self.output().open("w") as f:
+            f.write("ok\n");
+
+class OCIndexCits2Redis(luigi.Task):
+    param = luigi.PathParameter(default = "dir/temp/index_cits2redis/success.txt");
+
+    def requires(self):
+        return OCIndexCNC(param = "dir/temp/index_cnc/ocindex-data/success.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param);
+
+    def run(self):
+        # run cits2redis.py
+        now = datetime.now()
+        dump = "dir/temp/index_cnc/ocindex-data/data/rdf/" + now.strftime("%Y") + "/" + now.strftime("%m");
+        cmd =["python" + oc_index_cits2redis_dir + "--dump" + dump + "--intype" + "TTL"];
         run(cmd);
 
         # run dump_index.py
@@ -988,11 +1062,36 @@ class OCIndex(luigi.Task):
         with self.output().open("w") as f:
             f.write("ok\n");
 
-class Dump(luigi.Task):
+class OCIndexDump(luigi.Task):
+    param = luigi.PathParameter(default = "dir/output/index/success.txt");
+
+    def requires(self):
+        return OCIndexCits2Redis(param = "dir/temp/index_cits2redis.txt");
+
+    def output(self):
+        return luigi.LocalTarget(self.param);
+
+    def run(self):
+        # run cits2redis.py
+        now = datetime.now()
+        dump = "dir/temp/index_cnc/ocindex-data/data/rdf/" + now.strftime("%Y") + "/" + now.strftime("%m");
+        cmd =["python" + oc_index_cits2redis_dir + "--dump" + dump + "--intype" + "TTL"];
+        run(cmd);
+
+        # run dump_index.py
+        cmd = ["python", oc_index_dumpindex_dir, "--date", index_date, "--workers", str(index_dumpindex_workers)];
+        run(cmd);
+
+        with self.output().open("w") as f:
+            f.write("ok\n");
+
+
+
+class VirtuosoDump(luigi.Task):
     param = luigi.PathParameter(default = "dir/output/n-quads-dump/success.txt");
 
     def requires(self):
-        return OCIndex(param = "dir/output/index/success.txt");
+        return OCIndexDump(param = "dir/output/index/success.txt");
 
     def output(self):
         return luigi.LocalTarget(self.param)
@@ -1075,25 +1174,39 @@ if __name__ == "__main__":
     );
     args, _unknown = parser.parse_known_args();
 
+    load_config();
+
     tasks_to_run = [
-        LoadConfig(),
         Preprocess(),
         Validation(),
         DatabaseSwitchOn(),
         OCMeta(),
         OCMetaCsv(),
         Meta2Redis(),
-        #OCIndex(),
-        #Dump(),
+        OCIndexCNC(),
+        OCIndexCits2Redis(),
+        OCIndexDump(),
+        VirtuosoDump(),
         #CleanUp()
     ];
 
-    ok = luigi.build(
-        tasks_to_run,
-        workers = 1,
-        local_scheduler = bool(args.local_scheduler),
-        scheduler_host = "127.0.0.1",
-        scheduler_port = 8082,
-        detailed_summary = True
-    );
-    raise SystemExit(0 if ok else 1);
+    try:
+        ok = luigi.build(
+            tasks_to_run,
+            workers=1,
+            local_scheduler=bool(args.local_scheduler),
+            scheduler_host="127.0.0.1",
+            scheduler_port=8082,
+            detailed_summary=True
+        );
+
+        if ok:
+            notify("Workflow Status", "Workflow finished successfully.", True);
+            raise SystemExit(0);
+        else:
+            notify("Workflow Status", "Workflow failed.", False);
+            raise SystemExit(1);
+
+    except Exception as e:
+        notify("Workflow Status", f"Workflow failed:\n{str(e)}", False);
+        raise;
