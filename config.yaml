@@ -8,6 +8,7 @@ oc_meta_csv_dir: "../oc_meta/oc_meta/run/csv_generator_lite.py"
 meta2redis_dir: "../index/scripts/meta2redis.py"
 oc_index_config_dir: "../index/config.ini"
 oc_index_cnc_dir: "../index/scripts/cnc.py"
+oc_index_cits2redis_dir: "../index/scripts/cits2redis.py"
 oc_index_dumpindex_dir: "../index/scripts/dump_index.py"
 
 
@@ -21,7 +22,7 @@ blazegraph_container: "my-blazegraph"
 
 
 # PREPROCESSING
-preprocess_storage_type: "sparql" # can be "redis" or "sparql"
+preprocess_storage_type: "redis" # can be "redis" or "sparql", sparql not working as of Feb'26
 preprocess_redis_port: "6379"
 preprocess_redis_db_number: "10"
 preprocess_sparql_endpoint: "localhost:3030/ds/sparql"
@@ -31,7 +32,7 @@ preprocess_sparql_endpoint: "localhost:3030/ds/sparql"
 
 # 0 - basic validation, 1 - validation with META endpoint, 2 - skipping ID existence checks 
 validation_type: 2
-# line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error
+# line - eliminates just a single line in case of a validation error, file - marks the entire file as unvalidated in case of a validation error, workflow - stops the entire workflow
 validation_elimination: "line"
 
 
@@ -114,11 +115,11 @@ meta_graphdb_connector_name: ""
 prov_virtuoso_custom: 1 
 
 # default: 0. set to 1 to enable bulk loading n-quads to Virtuoso
-prov_virtuoso_bulk_load: 0 
+prov_virtuoso_bulk_load: 1 
 # internal container directory containing n-quads to populate PROV in Virtuoso with n-quads.
 prov_virtuoso_bulk_load_dir: "/input" 
 #default: 0. set to 1 to enable quadstore dumping of PROV from Virtuoso
-prov_virtuoso_dump: 0 
+prov_virtuoso_dump: 1 
 # internal container directory for n-quad dump containing PROV from Virtuoso
 prov_virtuoso_dump_dir: "/output" 
 # mounting volumes for bulk loading n-quads to Virtuoso and n-quad dumping of PROV from Virtuoso
@@ -181,6 +182,8 @@ index_logging_verbose: 1
 index_redis_host: 127.0.0.1
 index_redis_port: 6379
 index_redis_batch_size: 10000
+
+index_dump_output: ../oc_autoworkflow/dir/output/index
 
 # ORCID API key to be used to query the ORCID API
 index_cnc_orcid: 
