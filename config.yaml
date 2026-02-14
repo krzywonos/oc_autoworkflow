@@ -22,7 +22,7 @@ blazegraph_container: "my-blazegraph"
 
 
 # PREPROCESSING
-preprocess_storage_type: "redis" # can be "redis" or "sparql", sparql not working as of Feb'26
+preprocess_storage_type: "sparql" # can be "redis" or "sparql"
 preprocess_redis_port: "6379"
 preprocess_redis_db_number: "10"
 preprocess_sparql_endpoint: "localhost:3030/ds/sparql"
